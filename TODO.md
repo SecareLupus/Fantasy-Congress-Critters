@@ -23,3 +23,11 @@
 6) Pin data sources and schemas: canonical APIs, odds source, update cadence/latency in `Fantasy Congress Critters.md`.
 7) Create ruleset versioning policy: versioning, seasonal publication, and deprecation rules in `Fantasy Congress Critters.md`.
 8) Run a scoring sanity pass: test with a few recent bills and tune constants in `Fantasy Congress Critters.md`.
+
+## Ontology coverage checklist (draft)
+
+- Entity domains defined for all schema fields (`CRITTER`, `COMMITTEE`, `BILL`, `CHAMBER`, `SESSION`, `RULESET`, `LEAGUE`, `ROSTER`, `MARKET`, `QUERY`, `PRICING`, `TRANSACTION`, `DATA_FRESHNESS`).
+- Event domains used only for scoreable actions (`EVENT.*`) and separated from entity/state values.
+- Every page schema field mapped to exactly one ontology token.
+- Fields that are cross-cutting (pricing, freshness, transactions) use shared ontology tokens across pages.
+- Any schema field lacking a clear ontology token is listed and resolved before source mapping.
