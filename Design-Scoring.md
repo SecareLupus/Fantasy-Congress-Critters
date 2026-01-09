@@ -93,6 +93,10 @@ If the original sponsor or author can be identified:
 
 **Design intent:** large coalitions reward coordination, but individual credit diminishes smoothly rather than collapsing abruptly.
 
+**Ordinal Dilution Formula:**
+`CreditShare(rank) = 1 / (rank^0.5)`
+Where `rank` is the order in which the critter joined the coalition (Sponsor = 1, first co-sponsor = 2, etc.).
+
 ---
 
 ## 4. Participation & Attendance ("Showing Up Matters")
@@ -181,7 +185,11 @@ The system uses:
 * Energy & Commerce
 * Rules (House)
 
-**Base Value:** [TIER_1_BASE_VALUE]
+**Base Value:** 100
+
+**Chamber Mappings:**
+*   **House:** Appropriations; Ways & Means; Energy & Commerce; Rules; Armed Services.
+*   **Senate:** Appropriations; Finance; Armed Services; Foreign Relations; Judiciary.
 
 ---
 
@@ -197,7 +205,11 @@ The system uses:
 * Budget
 * Transportation & Infrastructure
 
-**Base Value:** [TIER_2_BASE_VALUE]
+**Base Value:** 70
+
+**Chamber Mappings:**
+*   **House:** Judiciary; Foreign Affairs; Homeland Security; Budget; Transportation & Infrastructure; Financial Services; Oversight & Accountability.
+*   **Senate:** Banking, Housing & Urban Affairs; Commerce, Science & Transportation; Energy & Natural Resources; Health, Education, Labor & Pensions; Budget; Homeland Security & Governmental Affairs; Intelligence.
 
 ---
 
@@ -213,7 +225,11 @@ The system uses:
 * Natural Resources
 * Small Business
 
-**Base Value:** [TIER_3_BASE_VALUE]
+**Base Value:** 40
+
+**Chamber Mappings:**
+*   **House:** Agriculture; Education & the Workforce; Natural Resources; Science, Space & Technology; Small Business; Veterans' Affairs.
+*   **Senate:** Agriculture, Nutrition & Forestry; Environment & Public Works; Aging; Ethics; Indian Affairs; Rules & Administration; Small Business & Entrepreneurship; Veterans' Affairs.
 
 ---
 
@@ -227,7 +243,11 @@ The system uses:
 * Ethics
 * Joint Library / Printing
 
-**Base Value:** [TIER_4_BASE_VALUE]
+**Base Value:** 15
+
+**Chamber Mappings:**
+*   **House:** House Administration; Ethics.
+*   **Joint:** Joint Library; Joint Printing; Joint Taxation; Joint Economic.
 
 ---
 
@@ -235,13 +255,13 @@ The system uses:
 
 Applied to the committee’s base value.
 
-| Role                | Multiplier                        | Notes                            |
-| ------------------- | --------------------------------- | -------------------------------- |
-| Chair               | ×[CHAIR_MULTIPLIER]               | Major prestige and control       |
-| Ranking Member      | ×[RANKING_MEMBER_MULTIPLIER]      | Minority leadership              |
-| Subcommittee Chair  | ×[SUBCOMMITTEE_CHAIR_MULTIPLIER]  | Applies to parent committee tier |
-| Subcommittee Member | ×[SUBCOMMITTEE_MEMBER_MULTIPLIER] | Rounds down                      |
-| Regular Member      | ×[REGULAR_MEMBER_MULTIPLIER]      | Base value                       |
+| Role                | Multiplier | Notes                            |
+| ------------------- | ---------- | -------------------------------- |
+| Chair               | ×3.0       | Major prestige and control       |
+| Ranking Member      | ×2.0       | Minority leadership              |
+| Subcommittee Chair  | ×1.5       | Applies to parent committee tier |
+| Subcommittee Member | ×1.1       | Rounds down                      |
+| Regular Member      | ×1.0       | Base value                       |
 
 ---
 
@@ -323,11 +343,11 @@ These categories are **ordinal, not numeric**. Exact multipliers will be defined
 
 **Authorship Categories:**
 
-* **Author** – Drafted or introduced the bill text; sole or primary originator.
-* **Primary Sponsor** – Official lead sponsor listed on the legislation.
-* **Early Co-Sponsor** – Joined before the bill demonstrated viability (pre-hearing or pre-calendar).
-* **Late Co-Sponsor** – Joined after momentum was established.
-* **Procedural / Symbolic Co-Sponsor** – Joined at or near passage with minimal demonstrated investment.
+* **Author / Primary Sponsor** – Drafting lead or official lead sponsor: **5.0x**
+* **Early Co-Sponsor** – Joined before viability (pre-hearing/calendar): **2.5x**
+* **Mid Co-Sponsor** – Joined during committee consideration: **1.5x**
+* **Late Co-Sponsor** – Joined after momentum was established: **1.0x**
+* **Procedural / Symbolic Co-Sponsor** – Joined at or near passage: **0.2x**
 
 **Key Rules:**
 

@@ -5,8 +5,8 @@
 - Define numeric values for scoring placeholders (`[TIER_*_BASE_VALUE]`, `{PTS_*}`)
 - Complete budgeting across legislative years in Section 6: cross-year mechanics, carryover rules, and caps
 - Specify pricing formulas for session costs, candidate odds-based pricing, and reelection premiums
-- Finalize committee prestige tier mapping (House and Senate) and base values
-- Define authorship multipliers and dilution curve shape/parameters
+- [x] Finalize committee prestige tier mapping (House and Senate) and base values
+- [x] Define authorship multipliers and dilution curve shape/parameters
 - Quantify anti-exploit caps, decay rates, and cooldown durations
 - Name canonical data sources/APIs, update cadences, and failure handling
 - Add concrete normalization mappings for action text parsing, including edge cases,
@@ -15,13 +15,13 @@
 
 ## Suggested next steps
 
-1) Lock scoring constants: set numeric values for action points, tier bases, authorship multipliers, and dilution curve parameters
+1) Lock scoring constants: set numeric values for action points, tier bases, authorship multipliers, and dilution curve parameters (PARTIALLY DONE: multipliers and tiers set)
 2) Finish budget rules: annual budget amounts, rollover policy, and penalties/caps
 3) Specify pricing formulas: session cost equation, odds-based candidate pricing, and reelection premiums
-4) Finalize committee tier map: explicit committee-to-tier list for both chambers
+4) Finalize committee tier map: explicit committee-to-tier list for both chambers (DONE)
 5) Define anti-exploit parameters: caps, cooldowns, and diminishing-return formulas
 6) Pin data sources and schemas: canonical APIs, odds source, update cadence/latency
-7) Create ruleset versioning policy: versioning, seasonal publication, and deprecation rules
+7) Create ruleset versioning policy: versioning, seasonal publication, and deprecation rules (DONE)
 8) Run a scoring sanity pass: test with a few recent bills and tune constants
 
 ## Ontology coverage checklist (draft)
