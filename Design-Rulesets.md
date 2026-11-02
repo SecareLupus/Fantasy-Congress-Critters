@@ -110,26 +110,5 @@ Users may create custom leagues with varying degrees of control.
 
 ---
 
-### 6.1 Annual Budgets
-
-* Budgets are allocated **per legislative year**
-* Players must plan across:
-
-  * Multiple sessions
-  * Both chambers
-  * Future elections
-
----
-
-### 6.2 Budget Allocation Rules
-
-* Drafting critters for the current year draws from the current year’s budget
-* Drafting candidates or future incumbents draws from the *future* year’s budget
-* No cross-year budget borrowing
-
-**Strategic tension:**
-
-> Spend now for points, or invest early for dominance later.
-
----
+Budgeting rules (Section 6) live in [Design-Economy](Design-Economy.md).
 

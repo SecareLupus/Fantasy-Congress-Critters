@@ -9,6 +9,7 @@
 - [x] Define authorship multipliers and dilution curve shape/parameters
 - Quantify anti-exploit caps, decay rates, and cooldown durations
 - Name canonical data sources/APIs, update cadences, and failure handling
+- Choose a fallback for the committee participation multiplier where committees don't publish recorded votes (most Senate committees)
 - Add concrete normalization mappings for action text parsing, including edge cases,
 - Specify ruleset versioning and governance (approval, freezing, deprecation)
 - Define multi-ownership discount schedule and guardrails
