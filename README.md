@@ -32,8 +32,30 @@ The core fantasy tension:
 
 ---
 
+## First Release Scope
+
+**In:**
+
+- Current-session incumbents, House and Senate
+- Positional and productivity scoring
+- Session and Annual leagues
+- Standing committees (including permanent select and special committees)
+- Play-money budgets only; no real money
+
+**Deferred:**
+
+- Drafting candidates and future incumbents (needs an election odds source)
+- Busyness modifier (no structured data for official travel)
+- Mid-session select committees and ad hoc committees
+- Contextual modifiers (majority/minority, bipartisanship)
+- Multi-ownership discounts (flat price at launch)
+- Representative, Presidential, and Senatorial leagues
+- Custom rulesets
+
+---
+
 ## Project Status (Draft)
 
-- Scoring values and caps are placeholders.
+- Scoring values and caps are placeholders; tune by replaying past Congresses through the engine.
 - Budget rules and pricing formulas are incomplete.
 - Ontology mappings exist, but entity domains still need formal definitions.
