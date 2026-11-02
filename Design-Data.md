@@ -13,15 +13,18 @@ This section defines how *Fantasy Congress Critters* ingests real-world data, de
 
 For each data domain, the game designates **one canonical source of record**. Only canonical sources may directly generate scoreable events.
 
-| Data Domain                      | Canonical Source (Conceptual)   | Purpose                         |
-| -------------------------------- | ------------------------------- | ------------------------------- |
-| Legislation (bills, resolutions) | Official congressional bill API | Bill lifecycle, status, actions |
-| Committees & memberships         | Official House / Senate records | Jurisdiction, gating, power     |
-| Roll-call votes                  | Official roll-call vote feeds   | Participation & voting          |
-| Committee schedules & hearings   | Official committee calendars    | Hearings, markups, oversight    |
-| Fundraising & donations          | FEC filings                     | Draft pricing inputs            |
-| Elections & incumbency           | Official election results       | Seating, term status            |
-| Election odds                    | Chosen odds aggregator          | Candidate & future pricing      |
+| Data Domain                      | Canonical Source                                              | Purpose                         |
+| -------------------------------- | ------------------------------------------------------------- | ------------------------------- |
+| Legislation (bills, resolutions) | Congress.gov API (Library of Congress)                        | Bill lifecycle, status, actions |
+| Committees & memberships         | House Clerk member data; Senate committee membership data     | Jurisdiction, gating, power     |
+| Roll-call votes                  | House Clerk roll-call data; Senate roll-call data             | Participation & voting          |
+| Committee schedules & hearings   | House: docs.house.gov Committee Repository; Senate: senate.gov committee hearing schedule | Hearings, markups, oversight |
+| Committee recorded votes         | House: docs.house.gov Committee Repository; Senate: **gap**  | Committee participation multiplier |
+| Fundraising & donations          | OpenFEC API                                                   | Draft pricing inputs            |
+| Elections & incumbency           | House Clerk and Senate member data (seating)                  | Seating, term status            |
+| Election odds                    | **Gap** (deferred with candidate drafting)                    | Candidate & future pricing      |
+
+The open-data `unitedstates/congress-legislators` dataset is the **secondary** source for the identifier crosswalk (bioguide, GovTrack, FEC, Wikidata) and for cross-checking memberships.
 
 **Rule:**
 
@@ -244,8 +247,10 @@ No secondary-only events are created.
 | COMMITTEE_HEARING_HELD | Full Credit | No Credit                                       |
 | COMMITTEE_MARKUP       | Full Credit | No Credit                                       |
 | ORDERED_REPORTED       | Full Credit | No Credit                                       |
-| PLACED_ON_CALENDAR     | Full Credit | Suppressed Credit (leadership agenda influence) |
-| PASSED_CHAMBER         | Full Credit | Full Credit                                     |
+| PLACED_ON_CALENDAR     | Full Credit | No Credit                                       |
+| PASSED_CHAMBER         | Full Credit | No Credit                                       |
+
+Other Transportation & Infrastructure members who did not sponsor or co-sponsor the bill score nothing for its committee events. Critter B is not a sponsor or co-sponsor, so scheduling the bill and passing it earn B nothing per-bill; the Majority Leader role is rewarded through positional points.
 
 ---
 
@@ -276,9 +281,8 @@ Authorship intensity applies only to Critter A for authorship-eligible events.
 
 * **Critter B** earns:
 
-  * Limited productivity from calendar placement (suppressed)
-  * Full credit for chamber passage
-  * No committee-derived productivity
+  * No productivity from this bill (not a sponsor or co-sponsor)
+  * Leadership value only through positional points
 
 Positional / structural power for both critters is scored **separately** via the positional pipeline.
 
@@ -287,7 +291,7 @@ Positional / structural power for both critters is scored **separately** via the
 ### Why This Example Matters
 
 * Demonstrates committee gating in practice
-* Shows suppressed credit without bypassing jurisdiction
+* Shows leadership cannot score a bill it did not back
 * Illustrates separation of power and productivity
 * Confirms no retroactive or secondary-source scoring
 

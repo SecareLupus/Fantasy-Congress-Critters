@@ -9,7 +9,7 @@ Documents: [Overview](README.md) | [Scoring](Design-Scoring.md) | [Economy](Desi
 
 ### 5.1 Draft Currency
 
-* Players acquire critters using **USD-denominated budgets**
+* Players acquire critters using **play-money budgets** denominated in in-game dollars. No real money enters or leaves the game; real-world figures (donations, election odds) are only pricing inputs.
 * Critter prices float based on real-world financial and political data
 * Critters may be purchased **before or during** a session
 
@@ -25,8 +25,9 @@ Timing modifiers apply:
 Each critter has a **Session Cost**.
 
 * Session Cost defines the total price for owning the critter for the full session
-* Cost is **extracted periodically** (e.g., weekly or monthly) from the player’s available balance
-* Players cannot overspend beyond their available balance
+* At purchase, the full Session Cost (pro-rated if bought mid-session) is **reserved** from the player's budget. Available balance = budget − reserved, so a player can never be overdrawn.
+* Reserved cost is **charged periodically** (e.g., weekly or monthly). Periodic charging only matters for releasing the unspent remainder when ownership ends early.
+* Players cannot purchase beyond their available balance
 
 Rules:
 
@@ -34,7 +35,9 @@ Rules:
 * If a critter leaves office mid-session (resignation, death, special election loss):
 
   * Periodic charges stop immediately
-  * No further payments are required
+  * No further payments are required; the unspent reservation returns to the available balance
+* Players may **drop** a critter at any time. The critter stops scoring for that roster, and the player pays the league's **drop cost** (§6A.7).
+* Critters cannot be **sold**. Ownership is non-exclusive, so there is no buyer.
 
 Base price derived from:
 

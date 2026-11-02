@@ -362,16 +362,28 @@ Categories are ordinal; the multipliers below are the Default Ruleset values.
 **Authorship Categories:**
 
 * **Author / Primary Sponsor** – Drafting lead or official lead sponsor: **5.0x**
-* **Early Co-Sponsor** – Joined before viability (pre-hearing/calendar): **2.5x**
+* **Early Co-Sponsor** – Joined before any committee action: **2.5x**
 * **Mid Co-Sponsor** – Joined during committee consideration: **1.5x**
-* **Late Co-Sponsor** – Joined after momentum was established: **1.0x**
-* **Procedural / Symbolic Co-Sponsor** – Joined at or near passage: **0.2x**
+* **Late Co-Sponsor** – Joined after the bill was reported: **1.0x**
+* **Procedural / Symbolic Co-Sponsor** – Joined after floor consideration began: **0.2x**
+
+**Stage Cutoffs:**
+
+| Category    | Joined…                                                                      |
+| ----------- | ---------------------------------------------------------------------------- |
+| Early       | Before the bill's first committee hearing or markup (includes original co-sponsors) |
+| Mid         | After the first hearing or markup, up to the committee reporting the bill (ordered reported, reported, or discharged) |
+| Late        | After the committee reports the bill, before floor consideration begins      |
+| Procedural  | After floor consideration begins                                             |
+
+* Stages are measured in the chamber where the bill was introduced.
+* If a bill skips a stage (e.g., no hearing, or brought straight to the floor), that window is empty and the next cutoff applies.
 
 **Key Rules:**
 
 * Only actions explicitly marked *Authorship-Eligible* may reference this scale.
 * A critter may only occupy **one authorship category per bill**.
-* Early vs late thresholds are defined relative to the bill’s progression, not absolute dates.
+* Early vs late cutoffs are defined by the bill's progression (Stage Cutoffs above), not absolute dates.
 * Authorship intensity **never applies to positional / structural points**.
 
 ---
@@ -406,11 +418,11 @@ Suppressed credit is applied **after eligibility checks** and **before authorshi
 
 | Action Category                    | Suppression Allowed | Notes                                  |
 | ---------------------------------- | ------------------- | -------------------------------------- |
-| Committee hearings                 | Yes                 | Leadership agenda influence only       |
+| Committee hearings                 | No                  | Sponsor / co-sponsor members only      |
 | Committee markups                  | No                  | Jurisdiction strictly enforced         |
 | Ordered reported / reported        | No                  | Requires committee vote                |
 | Discharge motions                  | Yes                 | Procedural override without membership |
-| Floor scheduling (rules, calendar) | Yes                 | Chamber leadership only                |
+| Floor scheduling (rules, calendar) | No                  | Sponsor / co-sponsors only             |
 | Conference committees              | Yes                 | Limited to appointed members           |
 | Oversight hearings                 | No                  | Committee membership required          |
 | Subpoenas                          | No                  | Chair / ranking only                   |
@@ -440,6 +452,7 @@ In these cases, actions either receive **full credit** or **no credit**, never s
    * A formal committee leader with jurisdictional authority.
 2. If the above condition is not met, the action yields **No Credit**, unless an explicit exception applies.
 3. Committee membership is evaluated **per chamber** (House ≠ Senate).
+4. **Bill committee actions** (referral, hearing, markup, ordered reported, reported, discharged) score only for committee members who are the bill's **sponsor or a co-sponsor** at the time of the action. Other committee members score nothing for that bill, including committee chairs and ranking members.
 
 #### Standard Exceptions (Explicitly Allowed)
 
@@ -453,8 +466,8 @@ The following actions always score at **Full Credit**, regardless of committee m
 
 #### Leadership & Jurisdiction Overrides
 
-* Committee Chairs and Ranking Members may score **Full Credit** for committee-gated actions even if acting outside a formal hearing or markup.
-* Chamber leadership (Speaker, Majority/Minority Leaders, Whips) may receive **Suppressed Credit** for committee-gated actions when acting through agenda control rather than committee process.
+* Committee Chairs and Ranking Members score a bill's committee actions only when they sponsor or co-sponsor it (Core Rule 4). Their role is rewarded through positional points, not per-bill credit, so it isn't counted twice.
+* Chamber leadership (Speaker, Majority/Minority Leaders, Whips) scores a bill's committee and floor scheduling actions only when they sponsor or co-sponsor it. Agenda control is rewarded through positional points, not per-bill credit.
 
 #### Select / Special Committees
 
@@ -471,6 +484,7 @@ The following actions always score at **Full Credit**, regardless of committee m
 
 * Committees define *who is allowed to act*, not just who gets bonus points.
 * Power without jurisdiction cannot be farmed for productivity.
+* Committee points go to members who back the bill, not to everyone who sits on the committee.
 * Leadership matters, but does not fully bypass committee structure.
 
 ---
@@ -616,6 +630,8 @@ In real legislatures, power enables action but does not guarantee it. This syste
 
 ### 2. Committee Referral & Committee Power Actions
 
+All actions in this section follow Core Rule 4: they score only for committee members who sponsor or co-sponsor the bill.
+
 ### 2.1 Committee Referral
 
 * **Type:** Attempt
@@ -624,7 +640,7 @@ In real legislatures, power enables action but does not guarantee it. This syste
 
 * **Committee-Gated:** Yes
 
-* **Description:** Bill referred to a committee where the member serves.
+* **Description:** Bill referred to a committee where the member serves and is the bill's sponsor or a co-sponsor.
 
 * **Score:** `{PTS_COMMITTEE_REFERRAL}`
 
@@ -723,6 +739,8 @@ In real legislatures, power enables action but does not guarantee it. This syste
 
 ### 3. Floor Scheduling & Procedural Actions
 
+All actions in this section score only for the bill's sponsor and co-sponsors at the time of the action, including when the procedural step is taken by chamber leadership.
+
 ### 3.1 Placed on Calendar
 
 * **Type:** Result
@@ -762,7 +780,7 @@ In real legislatures, power enables action but does not guarantee it. This syste
 
 ### 4.1 Floor Consideration
 
-* **Score:** `{PTS_FLOOR_CONSIDERATION}`
+* **Score:** `{PTS_FLOOR_CONSIDERATION}`, to the bill's sponsor and co-sponsors only
 * **Data mapping:** `actions[].text` contains "Considered"
 
 ---
@@ -1002,8 +1020,8 @@ Most real legislative work happens in committees.
 
 In the game:
 
-* Many actions only score if your critter is on the right committee.
-* Committee leadership unlocks more opportunities.
+* Committee actions on a bill only score if your critter sits on that committee **and** sponsors or co-sponsors the bill.
+* Committee leadership raises your critter's power, not their per-bill points.
 * Being powerful without jurisdiction limits what you can score.
 
 Leadership can influence outcomes — but committees still do the work.

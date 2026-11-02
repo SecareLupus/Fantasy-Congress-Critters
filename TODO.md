@@ -8,11 +8,16 @@
 - [x] Finalize committee prestige tier mapping (House and Senate) and base values
 - [x] Define authorship multipliers and dilution curve shape/parameters
 - Quantify anti-exploit caps, decay rates, and cooldown durations
-- Name canonical data sources/APIs, update cadences, and failure handling
+- [x] Name canonical data sources/APIs (gaps: Senate committee votes, election odds)
+- Define update cadences and failure handling per source
 - Choose a fallback for the committee participation multiplier where committees don't publish recorded votes (most Senate committees)
+- Choose an election odds source (deferred with candidate drafting)
 - Add concrete normalization mappings for action text parsing, including edge cases,
 - Specify ruleset versioning and governance (approval, freezing, deprecation)
-- Define multi-ownership discount schedule and guardrails
+- Define multi-ownership discount schedule and guardrails (deferred; flat price at launch)
+- Set Standard league settings: roster size/slots, win condition, starting budget, drop cost
+- [x] Decide who scores bill committee and floor scheduling actions (sponsor/co-sponsors only)
+- [x] Set authorship stage cutoffs
 
 ## Suggested next steps
 

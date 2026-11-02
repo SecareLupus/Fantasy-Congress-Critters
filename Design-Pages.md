@@ -384,7 +384,9 @@ This section enumerates the core pages required by the game, independent of UI l
 * `league.ruleset.id` (string)
 * `league.ruleset.version` (string)
 * `league.config.budget_rules` (object: annual_budget, caps, rollover_policy)
-* `league.config.roster_rules` (object: roster_limit, ownership_limits)
+* `league.config.roster_rules` (object: roster_limit, chamber_slots, ownership_limits)
+* `league.config.win_condition` (enum: cumulative, head_to_head)
+* `league.config.drop_cost` (object: type [forfeit_reservation, budget_fee, points_deduction], amount)
 * `league.participants[]` (array of objects: player_id, display_name, joined_at)
 * `league.standings[]` (array of objects: player_id, points, rank)
 * `league.budgets[]` (array of objects: player_id, available, committed)
@@ -405,6 +407,8 @@ This section enumerates the core pages required by the game, independent of UI l
 * `league.ruleset.version` -> `RULESET.VERSION`
 * `league.config.budget_rules` -> `LEAGUE.BUDGET_RULES`
 * `league.config.roster_rules` -> `LEAGUE.ROSTER_RULES`
+* `league.config.win_condition` -> `LEAGUE.WIN_CONDITION`
+* `league.config.drop_cost` -> `LEAGUE.DROP_COST`
 * `league.participants[]` -> `LEAGUE.PARTICIPANT`
 * `league.standings[]` -> `LEAGUE.STANDINGS`
 * `league.budgets[]` -> `LEAGUE.BUDGET_STATE`
@@ -444,6 +448,7 @@ This section enumerates the core pages required by the game, independent of UI l
 * `roster.scoring.total` (number)
 * `roster.scoring.positional` (number)
 * `roster.scoring.productivity` (number)
+* `roster.scoring.penalties` (number, player-level deductions such as a points-based drop cost; total = positional + productivity − penalties)
 * `roster.scoring.by_critter[]` (array of objects: critter_id, points)
 * `roster.risk.reelection_odds` (number)
 * `roster.risk.volatility_score` (number)
@@ -466,6 +471,7 @@ This section enumerates the core pages required by the game, independent of UI l
 * `roster.scoring.total` -> `ROSTER.SCORING.TOTAL`
 * `roster.scoring.positional` -> `ROSTER.SCORING.POSITIONAL`
 * `roster.scoring.productivity` -> `ROSTER.SCORING.PRODUCTIVITY`
+* `roster.scoring.penalties` -> `ROSTER.SCORING.PENALTIES`
 * `roster.scoring.by_critter[]` -> `ROSTER.SCORING.BY_CRITTER`
 * `roster.risk.reelection_odds` -> `ROSTER.RISK.REELECTION_ODDS`
 * `roster.risk.volatility_score` -> `ROSTER.RISK.VOLATILITY_SCORE`

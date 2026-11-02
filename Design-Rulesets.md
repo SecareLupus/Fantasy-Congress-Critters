@@ -66,7 +66,8 @@ Custom rules may affect:
 
 **Guardrails:**
 
-* Custom rulesets cannot violate core engine invariants (e.g., no negative scores, no retroactive scoring without consent).
+* Custom rulesets cannot violate core engine invariants (e.g., no negative critter scores, no retroactive scoring without consent).
+* "No negative critter scores" means a critter's action or inaction never costs a player points. Penalties for a player's own decisions (e.g., a points-based drop cost) may deduct points from that player's total.
 * League metadata always records the active ruleset and version.
 
 ---
@@ -107,6 +108,20 @@ Users may create custom leagues with varying degrees of control.
 | **GameMakers** | Define "Standard" ruleset versions; manage official leagues. |
 | **League Commissioner** | Managed custom league settings; approves custom rules (when supported). |
 | **The Engine** | Ensures scoring invariants cannot be violated by custom rules. |
+
+---
+
+## 6A.7 League Settings
+
+Roster and competition rules are set per league or season, not globally. Official leagues use the Standard values (TBD); private leagues may change them within these options.
+
+| Setting | Options |
+| :--- | :--- |
+| **Roster size** | Maximum critters per roster |
+| **Roster slots** | Optional per-chamber slots (e.g., N House, M Senate) |
+| **Win condition** | Cumulative points; weekly head-to-head matchups |
+| **Starting budget** | Amount per legislative year |
+| **Drop cost** | What dropping a critter costs: remaining reserved charges are still spent; a flat fee from the budget; or a points deduction from the player's total (not floored at zero). Without a cost, the full-session commitment has no force. |
 
 ---
 
