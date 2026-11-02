@@ -21,7 +21,7 @@ Critters earn positional points for:
 * Chamber leadership roles (Speaker, Majority/Minority Leader, Whip, etc.)
 * Formal caucus leadership roles (if officially recognized)
 
-Roll-call participation percentage for a given position acts as a **raw multiplier** on all positional points earned from that position.
+Roll-call participation percentage for a given position acts as a **raw multiplier** on all positional points earned from that position (see §4.1 for which votes count).
 
 **Design intent:**
 
@@ -40,8 +40,8 @@ These represent intentional effort and successful follow-through.
 
 Critters earn productivity points for:
 
-* Introducing legislation
-* Sponsoring or co-sponsoring legislation
+* Introducing (sponsoring) legislation
+* Co-sponsoring legislation
 * Advancing legislation through committees
 * Floor action (amendments offered, debate participation)
 * Passage milestones (committee, chamber, bicameral, enactment)
@@ -82,8 +82,8 @@ Points scale by *degree of investment* and *timing*:
 ### 3.2 Shared Credit & Diminishing Returns
 
 * Multiple critters may score on the same bill
-* Total available points may be capped
 * Credit is distributed along an **ordinal dilution curve**
+* Each critter's share is computed independently; later joiners never reduce an earlier joiner's share
 
 If the original sponsor or author can be identified:
 
@@ -97,6 +97,10 @@ If the original sponsor or author can be identified:
 `CreditShare(rank) = 1 / (rank^0.5)`
 Where `rank` is the order in which the critter joined the coalition (Sponsor = 1, first co-sponsor = 2, etc.).
 
+* Co-sponsors who join on the same date share a rank (e.g., all original co-sponsors are rank 2; the next date's joiners are rank 2 + the number of original co-sponsors).
+* Total credit per bill is not capped. Co-sponsors come only from the bill's chamber, which bounds the total naturally (about 40× a solo bill in the House, about 18× in the Senate).
+* Volume farming (co-sponsoring large numbers of bills) is handled by per-critter session caps (§9.1), not by per-bill caps.
+
 ---
 
 ## 4. Participation & Attendance ("Showing Up Matters")
@@ -108,7 +112,16 @@ Roll-call participation percentage for a given position is a **direct multiplier
 * Higher participation directly increases realized power
 * Missed votes reduce the value of held positions
 
-Participation modifiers are position-specific and session-specific.
+Participation modifiers are position-specific and session-specific. Which votes count depends on the position:
+
+| Position                         | Participation measured by                  |
+| -------------------------------- | ------------------------------------------ |
+| Committee seat or role           | That committee's recorded roll-call votes  |
+| Subcommittee seat or role        | That subcommittee's recorded roll-call votes |
+| Chamber leadership role          | Chamber floor roll-call votes              |
+| Caucus leadership role           | Chamber floor roll-call votes              |
+
+Floor votes also score as individual productivity events (§8.3, 7.1). For rank-and-file members this is the only way floor attendance counts; for leadership it also feeds the multiplier, which is intended because floor management is their job.
 
 ---
 
@@ -173,6 +186,10 @@ The system uses:
 
 ## Committee Prestige Tiers (Ex Ante, Session-Locked)
 
+Permanent select and special committees (House Permanent Select Committee on Intelligence, Senate Select Committee on Intelligence, Senate Special Committee on Aging) are tiered like standing committees. The temporary-tier rules under *Select / Special Committees* apply only to committees created mid-session.
+
+The same committee name can sit in different tiers by chamber (e.g., House vs Senate Judiciary). The chamber mappings are authoritative; the examples are illustrative.
+
 ### Tier 1 – Power Committees
 
 *High control over money, rules, or national security; strong leadership pipeline.*
@@ -199,8 +216,8 @@ The system uses:
 
 **Examples:**
 
-* Judiciary
-* Foreign Affairs / Foreign Relations
+* Judiciary (House)
+* Foreign Affairs (House)
 * Homeland Security
 * Budget
 * Transportation & Infrastructure
@@ -208,7 +225,7 @@ The system uses:
 **Base Value:** 70
 
 **Chamber Mappings:**
-*   **House:** Judiciary; Foreign Affairs; Homeland Security; Budget; Transportation & Infrastructure; Financial Services; Oversight & Accountability.
+*   **House:** Judiciary; Foreign Affairs; Homeland Security; Budget; Transportation & Infrastructure; Financial Services; Oversight & Accountability; Permanent Select Committee on Intelligence.
 *   **Senate:** Banking, Housing & Urban Affairs; Commerce, Science & Transportation; Energy & Natural Resources; Health, Education, Labor & Pensions; Budget; Homeland Security & Governmental Affairs; Intelligence.
 
 ---
@@ -229,7 +246,7 @@ The system uses:
 
 **Chamber Mappings:**
 *   **House:** Agriculture; Education & the Workforce; Natural Resources; Science, Space & Technology; Small Business; Veterans' Affairs.
-*   **Senate:** Agriculture, Nutrition & Forestry; Environment & Public Works; Aging; Ethics; Indian Affairs; Rules & Administration; Small Business & Entrepreneurship; Veterans' Affairs.
+*   **Senate:** Agriculture, Nutrition & Forestry; Environment & Public Works; Aging; Indian Affairs; Rules & Administration; Small Business & Entrepreneurship; Veterans' Affairs.
 
 ---
 
@@ -247,6 +264,7 @@ The system uses:
 
 **Chamber Mappings:**
 *   **House:** House Administration; Ethics.
+*   **Senate:** Ethics.
 *   **Joint:** Joint Library; Joint Printing; Joint Taxation; Joint Economic.
 
 ---
@@ -339,7 +357,7 @@ This system locks in committee prestige at the start of a session, uses clear ti
 
 Authorship intensity defines **how much credit a critter receives** for an authorship-eligible action. This scale is applied *after* base action scoring and *before* coalition dilution.
 
-These categories are **ordinal, not numeric**. Exact multipliers will be defined in a separate rubric.
+Categories are ordinal; the multipliers below are the Default Ruleset values.
 
 **Authorship Categories:**
 
@@ -553,44 +571,25 @@ In real legislatures, power enables action but does not guarantee it. This syste
 
 * **Committee-Gated:** No
 
-* **Description:** Member introduces a bill or resolution.
+* **Description:** Member introduces a bill or resolution. Every bill has exactly one sponsor, who is the member that introduces it; introduction and primary sponsorship are the same act and score once.
 
-* **Score:** `{PTS_BILL_INTRO}`
+* **Score:** `{PTS_BILL_INTRO}`, scaled by the **Author / Primary Sponsor** category
 
 * **Frequency:** Common (high-volume, low individual impact)
 
 **Data Mapping**
 
-* Bill Status: `introducedDate`, `sponsors[]`
+* Bill Status: `introducedDate`, `sponsors[]` (single entry), `isByRequest`
 
 **Design Notes**
 
 * Only award once per bill.
+* Bills introduced "by request" (`isByRequest == true`) score with the **Procedural / Symbolic** category instead of Author, since the sponsor is not necessarily endorsing the bill.
 * Optional rarity modifier by bill type.
 
 ---
 
-### 1.2 Original Sponsor
-
-* **Type:** Attempt
-
-* **Authorship-Eligible:** Yes (Primary)
-
-* **Committee-Gated:** No
-
-* **Description:** Member is listed as primary sponsor.
-
-* **Score:** `{PTS_PRIMARY_SPONSOR}`
-
-* **Frequency:** Common
-
-**Data mapping**
-
-* Sponsors array where `isByRequest == false`
-
----
-
-### 1.3 Cosponsor Added
+### 1.2 Cosponsor Added
 
 * **Type:** Attempt
 
@@ -941,7 +940,7 @@ These rules apply at the **session level** to prevent degenerate strategies that
 ## 11. Open Design Questions (For Next Iteration)
 
 * Exact numeric point formulas and caps
-* Shape of ordinal dilution curves
+* Committee vote data availability: Senate committees do not publish recorded votes consistently; a fallback for the committee participation multiplier is needed
 * Amendment vs standalone bill weighting
 * Handling multi-year bills
 * Scoring vetoes and executive interaction
@@ -967,7 +966,7 @@ Power is:
 
 * Predictable
 * Mostly steady across a session
-* Reduced if your critter misses votes
+* Reduced if your critter misses votes in the committees or roles they hold
 
 **Productivity** reflects *what your critter does*.
 
@@ -1015,7 +1014,7 @@ Leadership can influence outcomes — but committees still do the work.
 
 Holding a powerful role doesn’t help if your critter doesn’t participate.
 
-* Missing votes reduces the value of positions.
+* Missing committee votes reduces the value of committee seats; missing floor votes reduces the value of leadership roles and forfeits vote points.
 * Busy schedules only help if your critter actually attends official business.
 * Fundraising and campaigning never count as "activity."
 

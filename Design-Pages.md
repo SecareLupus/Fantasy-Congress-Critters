@@ -119,10 +119,10 @@ This section enumerates the core pages required by the game, independent of UI l
 * `committee.id` (string, stable internal id)
 * `committee.name` (string)
 * `committee.chamber` (enum: House, Senate, Joint)
-* `committee.type` (enum: standing, select, joint, ad_hoc)
+* `committee.type` (enum: standing, permanent_select, select, joint, ad_hoc; permanent_select covers permanent select and special committees, tiered like standing)
 * `committee.jurisdiction` (string)
 * `committee.session_id` (string)
-* `committee.tier` (enum: 1, 2, 3, 4, 1.5, 2.0)
+* `committee.tier` (enum: 1, 1.5, 2, 3, 4; tiers on a `select` committee are temporary tiers with their own base values)
 * `committee.leadership[]` (array of objects: critter_id, role, start_date, end_date)
 * `committee.members[]` (array of objects: critter_id, role, start_date, end_date)
 * `committee.subcommittees[]` (array of objects: subcommittee_id, name, leadership[], members[])
@@ -377,7 +377,10 @@ This section enumerates the core pages required by the game, independent of UI l
 
 * `league.id` (string)
 * `league.name` (string)
-* `league.session_id` (string)
+* `league.type` (enum: session, annual, representative, presidential, senatorial, standard_private, flexible_private)
+* `league.start_date` (date)
+* `league.end_date` (date)
+* `league.session_ids[]` (array of strings; leagues may span several sessions)
 * `league.ruleset.id` (string)
 * `league.ruleset.version` (string)
 * `league.config.budget_rules` (object: annual_budget, caps, rollover_policy)
@@ -394,7 +397,10 @@ This section enumerates the core pages required by the game, independent of UI l
 
 * `league.id` -> `LEAGUE.ID`
 * `league.name` -> `LEAGUE.NAME`
-* `league.session_id` -> `SESSION.ID`
+* `league.type` -> `LEAGUE.TYPE`
+* `league.start_date` -> `LEAGUE.START_DATE`
+* `league.end_date` -> `LEAGUE.END_DATE`
+* `league.session_ids[]` -> `SESSION.ID`
 * `league.ruleset.id` -> `RULESET.ID`
 * `league.ruleset.version` -> `RULESET.VERSION`
 * `league.config.budget_rules` -> `LEAGUE.BUDGET_RULES`

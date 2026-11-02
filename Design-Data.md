@@ -61,8 +61,7 @@ All raw data is normalized into an **internal event ontology** before scoring. T
 
 **Illustrative Event Types:**
 
-* `BILL_INTRODUCED`
-* `PRIMARY_SPONSOR_ASSIGNED`
+* `BILL_INTRODUCED` (carries the sponsor; there is no separate sponsor event)
 * `COSPONSOR_ADDED`
 * `COMMITTEE_HEARING_HELD`
 * `COMMITTEE_MARKUP`
@@ -108,6 +107,16 @@ This section defines **non-event ontology domains** used to represent durable en
 * `PRICING.*` – Pricing inputs, timing modifiers, and ownership discounts.
 * `TRANSACTION.*` – Market and roster transaction records.
 * `DATA_FRESHNESS.*` – Sync timestamps and source provenance.
+* `SUBCOMMITTEE.*` – Subcommittee identity and membership; tier derived from the parent committee.
+* `LEADERSHIP.*` – Chamber leadership assignments held by a critter.
+* `CAUCUS.*` – Officially recognized caucuses and caucus leadership.
+* `VOTE.*` – Roll-call vote records (chamber, roll call id, result, date).
+* `PARTICIPATION.*` – Roll-call rates, missed votes, busyness, and reliability metrics.
+* `AUTHORSHIP.*` – Primary sponsor, early/late thresholds, and dilution curve bindings for a bill.
+* `SCORING.*` – Computed point totals, milestones, and per-critter attributions.
+* `PLAYER.*` – Player identity.
+* `BUDGET.*` – A player's available, committed, and future-year budget amounts.
+* `OWNERSHIP.*` – Which players own a critter, and how many.
 
 **Entity/State vs Event Rules:**
 
