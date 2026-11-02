@@ -1,0 +1,117 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Trimmed, hand-edited BILLSTATUS record covering each source the normalizer reads. -->
+<billStatus>
+  <bill>
+    <number>100</number>
+    <updateDate>2024-12-01T00:00:00Z</updateDate>
+    <originChamber>House</originChamber>
+    <type>HR</type>
+    <introducedDate>2023-03-01</introducedDate>
+    <congress>118</congress>
+    <title>Sample Act</title>
+    <policyArea><name>Public Lands and Natural Resources</name></policyArea>
+    <committees>
+      <item>
+        <systemCode>hsii00</systemCode>
+        <name>Natural Resources Committee</name>
+        <chamber>House</chamber>
+        <subcommittees>
+          <item>
+            <systemCode>hsii10</systemCode>
+            <name>Federal Lands Subcommittee</name>
+            <activities>
+              <item><name>Hearings By (subcommittee)</name><date>2023-04-10T15:00:00Z</date></item>
+              <item><name>Referred to</name><date>2023-03-05T15:00:00Z</date></item>
+            </activities>
+          </item>
+        </subcommittees>
+        <activities>
+          <item><name>Reported By</name><date>2023-06-01T15:00:00Z</date></item>
+          <item><name>Markup By</name><date>2023-05-10T15:00:00Z</date></item>
+          <item><name>Referred To</name><date>2023-03-01T15:00:00Z</date></item>
+          <item><name>Bills of Interest - Exchange of Letters</name></item>
+        </activities>
+      </item>
+    </committees>
+    <actions>
+      <item>
+        <actionDate>2023-12-20</actionDate><text>Became Public Law No: 118-99.</text>
+        <type>President</type><actionCode>E40000</actionCode>
+        <sourceSystem><code>9</code><name>Library of Congress</name></sourceSystem>
+      </item>
+      <item>
+        <actionDate>2023-12-15</actionDate><text>Vetoed by President.</text>
+        <type>President</type><actionCode>E30000</actionCode>
+        <sourceSystem><code>2</code><name>House floor actions</name></sourceSystem>
+      </item>
+      <item>
+        <actionDate>2023-12-01</actionDate><text>Passed Senate without amendment by Unanimous Consent.</text>
+        <type>Floor</type><actionCode>17000</actionCode>
+        <sourceSystem><code>9</code><name>Library of Congress</name></sourceSystem>
+      </item>
+      <item>
+        <actionDate>2023-11-30</actionDate><text>Cloture on the motion to proceed to the measure not invoked in Senate by Yea-Nay Vote. 55 - 45.</text>
+        <type>Floor</type>
+        <sourceSystem><code>0</code><name>Senate</name></sourceSystem>
+      </item>
+      <item>
+        <actionDate>2023-11-28</actionDate><text>Cloture motion on the motion to proceed to the measure presented in Senate.</text>
+        <type>Floor</type>
+        <sourceSystem><code>0</code><name>Senate</name></sourceSystem>
+      </item>
+      <item>
+        <actionDate>2023-11-20</actionDate><text>Committee on Energy and Natural Resources Subcommittee on Public Lands. Hearings held prior to introduction and/or referral.</text>
+        <type>Committee</type>
+        <sourceSystem><code>0</code><name>Senate</name></sourceSystem>
+        <committees><item><systemCode>sseg00</systemCode></item></committees>
+      </item>
+      <item>
+        <actionDate>2023-11-15</actionDate><text>Committee on Energy and Natural Resources. Ordered to be reported without amendment favorably.</text>
+        <type>Committee</type>
+        <sourceSystem><code>0</code><name>Senate</name></sourceSystem>
+        <committees><item><systemCode>sseg00</systemCode></item></committees>
+      </item>
+      <item>
+        <actionDate>2023-07-12</actionDate><text>On passage Passed by the Yeas and Nays: 225 - 204 (Roll no. 182).</text>
+        <type>Floor</type><actionCode>8000</actionCode>
+        <sourceSystem><code>9</code><name>Library of Congress</name></sourceSystem>
+        <recordedVotes>
+          <recordedVote>
+            <rollNumber>182</rollNumber><chamber>House</chamber><congress>118</congress>
+            <date>2023-07-12T18:00:00Z</date><sessionNumber>1</sessionNumber>
+          </recordedVote>
+        </recordedVotes>
+      </item>
+      <item>
+        <actionDate>2023-06-02</actionDate><text>Placed on the Union Calendar, Calendar No. 17.</text>
+        <type>Calendars</type><actionCode>H12410</actionCode>
+        <sourceSystem><code>2</code><name>House floor actions</name></sourceSystem>
+      </item>
+      <item>
+        <actionDate>2023-05-10</actionDate><text>Ordered to be Reported by Voice Vote.</text>
+        <type>Committee</type>
+        <sourceSystem><code>1</code><name>House committee actions</name></sourceSystem>
+        <committees><item><systemCode>hsii00</systemCode></item></committees>
+      </item>
+      <item>
+        <actionDate>2023-03-01</actionDate><text>Referred to the House Committee on Natural Resources.</text>
+        <type>IntroReferral</type><actionCode>H11100</actionCode>
+        <sourceSystem><code>2</code><name>House floor actions</name></sourceSystem>
+      </item>
+    </actions>
+    <sponsors>
+      <item><bioguideId>A000001</bioguideId><isByRequest>N</isByRequest></item>
+    </sponsors>
+    <cosponsors>
+      <item>
+        <bioguideId>B000002</bioguideId><sponsorshipDate>2023-03-01</sponsorshipDate>
+        <isOriginalCosponsor>True</isOriginalCosponsor>
+      </item>
+      <item>
+        <bioguideId>C000003</bioguideId><sponsorshipDate>2023-04-20</sponsorshipDate>
+        <isOriginalCosponsor>False</isOriginalCosponsor>
+        <sponsorshipWithdrawnDate>2023-05-01</sponsorshipWithdrawnDate>
+      </item>
+    </cosponsors>
+  </bill>
+</billStatus>

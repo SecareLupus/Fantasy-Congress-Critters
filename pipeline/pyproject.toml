@@ -1,0 +1,22 @@
+[project]
+name = "critters-pipeline"
+version = "0.1.0"
+description = "Data ingestion and normalization for Fantasy Congress Critters"
+requires-python = ">=3.12"
+dependencies = [
+    "psycopg[binary]>=3.2",
+    "pyyaml>=6",
+]
+
+[project.scripts]
+critters = "pipeline.cli:main"
+
+[dependency-groups]
+dev = ["pytest>=8"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/pipeline"]

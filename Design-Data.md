@@ -62,20 +62,20 @@ All raw data is normalized into an **internal event ontology** before scoring. T
 * Independent of any single external schema
 * Expressive enough to support scoring rubrics
 
-**Illustrative Event Types:**
+**Event Types (as implemented in `pipeline/`):**
 
-* `BILL_INTRODUCED` (carries the sponsor; there is no separate sponsor event)
-* `COSPONSOR_ADDED`
-* `COMMITTEE_HEARING_HELD`
-* `COMMITTEE_MARKUP`
-* `ORDERED_REPORTED`
-* `PLACED_ON_CALENDAR`
-* `FLOOR_CONSIDERATION`
-* `AMENDMENT_OFFERED`
-* `AMENDMENT_ADOPTED`
-* `PASSED_CHAMBER`
-* `CONFERENCE_APPOINTED`
-* `SIGNED_INTO_LAW`
+| Group | Event types |
+| --- | --- |
+| Sponsorship | `BILL_INTRODUCED` (carries the sponsor; no separate sponsor event), `COSPONSOR_ADDED`, `COSPONSOR_WITHDRAWN` |
+| Committee | `COMMITTEE_REFERRAL`, `COMMITTEE_HEARING_HELD`, `COMMITTEE_MARKUP`, `ORDERED_REPORTED`, `REPORTED`, `COMMITTEE_DISCHARGED`, `DISCHARGE_PETITION_FILED` |
+| Floor scheduling | `PLACED_ON_CALENDAR`, `RULE_REPORTED`, `RULE_ADOPTED` (House), `MOTION_TO_PROCEED`, `CLOTURE_FILED`, `CLOTURE_INVOKED` (Senate) |
+| Floor | `FLOOR_CONSIDERATION`, `PASSED_CHAMBER`, `FAILED_PASSAGE` |
+| Bicameral | `CONFERENCE_APPOINTED`, `CONFERENCE_REPORT_AGREED`, `RESOLVED_DIFFERENCES` |
+| Presidential | `PRESENTED_TO_PRESIDENT`, `VETOED`, `VETO_OVERRIDE_PASSED`, `VETO_OVERRIDE_FAILED`, `BECAME_LAW` |
+
+Committee events carry the committee or subcommittee code; parent committees come from the committee reference data. Not yet implemented: amendment events (`AMENDMENT_OFFERED`, `AMENDMENT_ADOPTED`) and roll-call votes.
+
+`COMMITTEE_DISCHARGED` is usually routine (a secondary committee released so the bill can move). Discharge petitions, the procedural override in §8.3, are `DISCHARGE_PETITION_FILED`.
 
 Each external data source is mapped **independently** into this ontology.
 
