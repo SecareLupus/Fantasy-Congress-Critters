@@ -396,6 +396,34 @@ def week_bounds(session: Session, weeks: int) -> list[tuple[date, date]]:
     return bounds
 
 
+def week_of(session: Session, day: date, weeks: int) -> int:
+    """The settlement week (1-based) of a day in the session."""
+    return min((day - session.start).days // 7, weeks - 1) + 1
+
+
+def weekly_points(items: Iterable[ScoreItem], sessions: list[Session], participation: "WeeklyParticipation",
+                  weeks: int) -> dict[tuple[str, int, int], list[float]]:
+    """Points by (critter, session, settlement week), as [power, productivity]. A seat or post
+    is split across the weeks it was held, each at that week's participation, so a critter's
+    weeks add up to their items. Everything else falls in the week of its date."""
+    by_number = {s.number: s for s in sessions}
+    out: dict[tuple[str, int, int], list[float]] = defaultdict(lambda: [0.0, 0.0])
+    for i in items:
+        s = by_number[i.session]
+        col = 0 if i.pillar == "power" else 1
+        if "session_days" in i.detail:
+            end = i.item_date + timedelta(i.detail["days"])
+            rates = participation.week_rates(i.bioguide_id, s)
+            for w, (a, b) in enumerate(week_bounds(s, weeks)):
+                days = (min(b, end) - max(a, i.item_date)).days
+                if days > 0:
+                    out[(i.bioguide_id, s.number, w + 1)][col] += i.detail["value"] * days / s.days * rates[w]
+        else:
+            week = i.detail.get("week") or week_of(s, i.item_date, weeks)
+            out[(i.bioguide_id, s.number, week)][col] += i.points
+    return dict(out)
+
+
 class WeeklyParticipation:
     """Roll-call participation by settlement week: the share of the roll calls a member
     was recorded on that they voted on. A week with none counts at the member's

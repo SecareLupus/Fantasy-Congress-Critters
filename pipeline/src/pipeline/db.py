@@ -6,6 +6,7 @@ from psycopg.types.json import Jsonb
 
 from .billstatus import Action, Bill
 from .config import DATABASE_URL
+from .ledger import Holding
 from .normalize import Event
 from .rosters import Membership
 from .votes import RollCall
@@ -201,7 +202,7 @@ def scoring_inputs(conn: psycopg.Connection, congress: int):
     return list(bills.values()), votes, positions, leadership
 
 
-def save_score_run(conn: psycopg.Connection, congress: int, ruleset, items) -> int:
+def save_score_run(conn: psycopg.Connection, congress: int, ruleset, items, weekly: dict) -> int:
     run_id = conn.execute(
         "INSERT INTO score_runs (congress, ruleset_version, ruleset) VALUES (%s, %s, %s) RETURNING run_id",
         (congress, ruleset.version, Jsonb(ruleset.raw)),
@@ -214,6 +215,11 @@ def save_score_run(conn: psycopg.Connection, congress: int, ruleset, items) -> i
             copy.write_row((run_id, i.bioguide_id, i.session, i.pillar, i.category, i.item_date,
                             i.points, i.bill_id, i.amendment_id, i.vote_id, i.committee_code,
                             Jsonb(i.detail) if i.detail else None))
+    with conn.cursor().copy(
+        "COPY weekly_points (run_id, bioguide_id, session, week, power, productivity) FROM STDIN"
+    ) as copy:
+        for (bioguide, session, week), (power, productivity) in weekly.items():
+            copy.write_row((run_id, bioguide, session, week, power, productivity))
     conn.commit()
     return run_id
 
@@ -425,3 +431,118 @@ def update_league(conn: psycopg.Connection, league_id: int, settings: dict,
     conn.execute("""UPDATE leagues SET settings = %s, ruleset_version = %s, ruleset = %s, updated_at = now()
                     WHERE league_id = %s""", (Jsonb(settings), ruleset_version, Jsonb(ruleset), league_id))
     conn.commit()
+
+
+def league_run(conn: psycopg.Connection, ruleset: dict, congress: int) -> int | None:
+    """The latest run scoring `congress` with exactly this ruleset."""
+    return conn.execute("SELECT max(run_id) FROM score_runs WHERE congress = %s AND ruleset = %s",
+                        (congress, Jsonb(ruleset))).fetchone()[0]
+
+
+def join_league(conn: psycopg.Connection, league_id: int, player: str, day) -> int:
+    roster_id = conn.execute(
+        "INSERT INTO rosters (league_id, player, joined_on) VALUES (%s, %s, %s) RETURNING roster_id",
+        (league_id, player, day)).fetchone()[0]
+    conn.commit()
+    return roster_id
+
+
+ROSTER_COLUMNS = ("roster_id", "league_id", "player", "joined_on")
+
+
+def rosters(conn: psycopg.Connection, league_id: int, player: str | None = None) -> list[dict]:
+    rows = conn.execute(
+        f"SELECT {', '.join(ROSTER_COLUMNS)} FROM rosters WHERE league_id = %s"
+        + (" AND player = %s" if player else "") + " ORDER BY roster_id",
+        (league_id, player) if player else (league_id,)).fetchall()
+    return [dict(zip(ROSTER_COLUMNS, row)) for row in rows]
+
+
+def last_transaction(conn: psycopg.Connection, roster_id: int):
+    return conn.execute("SELECT max(made_on) FROM transactions WHERE roster_id = %s", (roster_id,)).fetchone()[0]
+
+
+def critter_price(conn: psycopg.Connection, run_id: int, session: int, bioguide: str) -> dict | None:
+    row = conn.execute("""SELECT chamber, session_cost, signing_fee, weekly_fee FROM critter_prices
+                          WHERE run_id = %s AND session = %s AND bioguide_id = %s""",
+                       (run_id, session, bioguide)).fetchone()
+    return dict(zip(("chamber", "session_cost", "signing_fee", "weekly_fee"), row)) if row else None
+
+
+def priced(conn: psycopg.Connection, run_id: int, session: int) -> list[str]:
+    return [r[0] for r in conn.execute(
+        "SELECT bioguide_id FROM critter_prices WHERE run_id = %s AND session = %s", (run_id, session))]
+
+
+def service_end(conn: psycopg.Connection, bioguide: str, day):
+    """When the service that includes `day` ends (exclusive), following back-to-back terms;
+    None if the critter is not in office on `day`."""
+    end = None
+    for start, term_end in conn.execute(
+            "SELECT start_date, end_date FROM critter_terms WHERE bioguide_id = %s ORDER BY start_date",
+            (bioguide,)):
+        if end is None:
+            if start <= day < term_end:
+                end = term_end
+        elif start <= end:
+            end = max(end, term_end)
+    return end
+
+
+def holdings(conn: psycopg.Connection, roster_id: int, congress: int, session) -> list[Holding]:
+    """A roster's purchases for a session (scoring.Session), with their drops."""
+    out = []
+    for row in conn.execute("""
+            SELECT p.txn_id, p.bioguide_id, p.chamber, p.made_on, p.week, p.last_week, p.session_cost,
+                   p.signing_fee, p.weekly_fee, d.made_on, d.week, d.extra_fee, d.points_penalty
+            FROM transactions p LEFT JOIN transactions d ON d.purchase_id = p.txn_id
+            WHERE p.roster_id = %s AND p.kind = 'purchase' AND p.congress = %s AND p.session = %s
+            ORDER BY p.txn_id""", (roster_id, congress, session.number)).fetchall():
+        (txn_id, bioguide, chamber, made_on, first, last, cost, signing, weekly,
+         dropped_on, drop_week, extra_fee, penalty) = row
+        end = service_end(conn, bioguide, max(made_on, session.start))
+        out.append(Holding(bioguide, chamber, made_on, first, last, cost, signing, weekly,
+                           left_office=end if end and end < session.end else None,
+                           dropped_on=dropped_on, drop_week=drop_week, extra_fee=extra_fee or 0,
+                           points_penalty=penalty or 0.0, txn_id=txn_id))
+    return out
+
+
+def record_purchase(conn: psycopg.Connection, roster_id: int, congress: int, session: int, run_id: int, h) -> int:
+    txn_id = conn.execute("""
+        INSERT INTO transactions (roster_id, kind, bioguide_id, congress, session, made_on, week, price_run,
+                                  chamber, session_cost, signing_fee, weekly_fee, last_week)
+        VALUES (%s, 'purchase', %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING txn_id""",
+        (roster_id, h.bioguide_id, congress, session, h.made_on, h.first_week, run_id, h.chamber,
+         h.session_cost, h.signing_fee, h.weekly_fee, h.last_week)).fetchone()[0]
+    conn.commit()
+    return txn_id
+
+
+def record_drop(conn: psycopg.Connection, roster_id: int, congress: int, session: int, h) -> int:
+    txn_id = conn.execute("""
+        INSERT INTO transactions (roster_id, kind, bioguide_id, congress, session, made_on, week, purchase_id,
+                                  extra_fee, points_penalty)
+        VALUES (%s, 'drop', %s, %s, %s, %s, %s, %s, %s, %s) RETURNING txn_id""",
+        (roster_id, h.bioguide_id, congress, session, h.dropped_on, h.drop_week, h.txn_id,
+         h.extra_fee, h.points_penalty)).fetchone()[0]
+    conn.commit()
+    return txn_id
+
+
+def roster_weekly_points(conn: psycopg.Connection, run_id: int, session: int,
+                         bioguides: list[str]) -> dict[tuple[str, int], tuple[float, float]]:
+    return {(b, w): (p, q) for b, w, p, q in conn.execute(
+        """SELECT bioguide_id, week, power, productivity FROM weekly_points
+           WHERE run_id = %s AND session = %s AND bioguide_id = ANY(%s)""", (run_id, session, bioguides))}
+
+
+def find_critters(conn: psycopg.Connection, text: str, among: list[str] | None = None) -> list[tuple[str, str]]:
+    """(bioguide, name) of critters whose bioguide is `text`, or whose name contains it."""
+    rows = conn.execute("""
+        SELECT bioguide_id, official_full_name FROM critters
+        WHERE (bioguide_id = upper(%(t)s) OR official_full_name ILIKE '%%' || %(t)s || '%%')
+          AND (%(among)s::text[] IS NULL OR bioguide_id = ANY(%(among)s))
+        ORDER BY bioguide_id = upper(%(t)s) DESC, official_full_name""", {"t": text, "among": among}).fetchall()
+    exact = [r for r in rows if r[0] == text.upper()]
+    return exact or rows

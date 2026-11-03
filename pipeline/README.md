@@ -21,6 +21,9 @@ uv run critters report                 # balance and composition of the latest r
 uv run critters price                  # Session Costs for session 2 from the latest run
 uv run critters league preset save standard --file presets/standard.toml --by <you>
 uv run critters league create --name "2026 Session" --type session --congress 119 --session 2 --by <you>
+uv run critters league join 1 <player>
+uv run critters league buy 1 <player> Cornyn Neguse   # bioguide ids or parts of names
+uv run critters league standings 1
 uv run pytest
 ```
 
@@ -47,8 +50,10 @@ Raw files land in `data/raw/` (gitignored). `load` is idempotent: each bill and 
 - `roll_call_actions` (view): bill and amendment actions that cite a roll call, from BILLSTATUS, for "what did this vote do".
 - `critter_leadership`: chamber and party leadership posts (Speaker, floor leaders, whips, conference posts).
 - `score_runs`, `score_items`: one run per scoring of a Congress with a ruleset, and one item per point-earning fact: an event credit, a vote, or a position held in a session. Each item records its pillar (power or productivity), category, date, source (bill, amendment, vote, or committee), and the factors behind its points.
+- `weekly_points`: a run's points per critter and settlement week, for standings. A seat is split across the weeks it was held at each week's participation, so a critter's weeks add up to their items.
 - `critter_prices`: Session Costs priced from a scoring run: projected power and productivity, market multiplier, signing fee and weekly fee per critter.
 - `league_presets`, `leagues`: settings presets authored by GameMakers, and leagues with their resolved settings and a frozen copy of their ruleset.
+- `rosters`, `transactions`: a player's roster in a league, and its purchases (with the price paid and the weeks reserved) and drops.
 - `critters`, `critter_terms`, `committees`: reference data.
 
 ## Scoring
@@ -62,6 +67,13 @@ Raw files land in `data/raw/` (gitignored). `load` is idempotent: each bill and 
 ## Leagues
 
 League rules are settings on each league, set by a game master (Design-Rulesets §6A.7), not constants in the code or the ruleset. `leagues.py` defines which settings exist and their limits; values come from presets (`presets/standard.toml`, loaded with `critters league preset save`) and from the game master's `--set path=value` overrides at `critters league create`. A league keeps its own copy of the settings and of its ruleset, and both are frozen once it starts (`critters league update` refuses after that). Official league types need `--role gamemaker`. `critters price --league ID` prices with the league's ruleset and checks its budget.
+
+Players trade with `critters league join`, `buy`, `drop`, `roster` and `standings` (`ledger.py`, Design-Economy §5.2). Each takes `--on DATE` (default today), so a past season can be replayed; a roster's transactions can't be dated before its last one. A league scores and prices from the latest run of each Congress scored with exactly its frozen ruleset (`critters score --league ID` makes one), and its sessions must be priced in that run.
+
+- Each legislative year has its own budget. A purchase spends the signing fee and reserves the weekly fee for every league week left in the session; made during a week, it is held from the next week.
+- A drop takes effect the next week: the critter scores through the week already paid for, and the rest of the reservation returns. The league's `drop_cost` adds a fee and a points penalty.
+- A critter whose service ends mid-session leaves the roster with no drop cost: later weeks aren't charged and the slot frees.
+- Points count for the weeks held once each week has ended. Standings rank by total points; head-to-head isn't built yet.
 
 ## Normalization notes
 

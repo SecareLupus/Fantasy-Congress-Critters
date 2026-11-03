@@ -39,12 +39,16 @@ Every seated member of the House or Senate can be purchased, including the five 
 Rules:
 
 * A critter cannot be purchased for less than a full session commitment: the purchase reserves every remaining week of the session
+* Rosters change at settlement week boundaries, so no one buys a week whose points are already known. A purchase made before the session is held from week 1; one made during a week is held from the next week. Each week's fee is charged when the week starts.
 * If a critter leaves office mid-session (resignation, death, special election loss):
 
-  * Weekly charges stop immediately
+  * Weekly charges stop immediately: weeks starting after the departure aren't charged
   * The unspent reservation returns to the available balance
-* Players may **drop** a critter at any time. The critter stops scoring for that roster and the unspent weekly reservation returns. The signing fee is the drop cost: it is already spent, and any replacement charges its own (§6A.7).
+  * The critter leaves the roster and the slot frees, with no drop cost
+* Players may **drop** a critter at any time. A drop made during a week takes effect the next week: the critter scores through the week already paid for, then stops scoring for that roster, and the unspent weekly reservation returns. The signing fee is the drop cost: it is already spent, and any replacement charges its own (§6A.7). A dropped critter can be bought again, for a new signing fee.
 * A mid-session purchase pays the full signing fee on the critter's current Session Cost, plus weekly fees for the weeks left
+* A league counts only the settlement weeks that start within its dates, so a league that starts mid-session (a presidential league on January 20) reserves and scores only its own weeks
+* A roster scores the points its critters earn in the weeks it holds them, once each week has ended
 * Critters cannot be **sold**. Ownership is non-exclusive, so there is no buyer.
 
 #### Session Cost formula (v0.1)

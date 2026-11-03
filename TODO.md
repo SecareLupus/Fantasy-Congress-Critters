@@ -21,7 +21,9 @@
 - Define multi-ownership discount schedule and guardrails (deferred; flat price at launch)
 - [x] League settings as a per-league entity set by game masters, with GameMaker presets (Design-Rulesets §6A.7)
 - Head-to-head matchups: scheduling and weekly scoring for leagues that choose them
-- Rosters, purchases, drops and standings within a league
+- [x] Rosters, purchases, drops and standings within a league (cumulative standings; `critters league buy`, `drop`, `roster`, `standings`)
+- Decide whether a critter earns points for bill progress after leaving office: scoring credits departed sponsors and co-sponsors (562 points to 13 members who left in 2024); rosters already stop counting them
+- Price critters seated mid-session (special elections, appointments): they have no Session Cost, so they can't be bought
 - [x] Decide who scores bill committee and floor scheduling actions (sponsor/co-sponsors only)
 - [x] Set authorship stage cutoffs
 
