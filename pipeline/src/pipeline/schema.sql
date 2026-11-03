@@ -83,6 +83,46 @@ CREATE TABLE IF NOT EXISTS bill_actions (
     PRIMARY KEY (bill_id, seq)
 );
 
+CREATE TABLE IF NOT EXISTS amendments (
+    amendment_id         text PRIMARY KEY,  -- e.g. 118-hamdt-173
+    bill_id              text NOT NULL REFERENCES bills ON DELETE CASCADE,
+    congress             int NOT NULL,
+    amendment_type       text NOT NULL,
+    number               int NOT NULL,
+    chamber              text NOT NULL,
+    sponsor_id           text,
+    sponsor_name         text,
+    on_behalf_of_id      text,
+    submitted_date       date,
+    proposed_date        date,
+    description          text,
+    purpose              text,
+    amended_amendment_id text
+);
+CREATE INDEX IF NOT EXISTS amendments_bill ON amendments (bill_id);
+
+CREATE TABLE IF NOT EXISTS amendment_cosponsors (
+    amendment_id     text NOT NULL REFERENCES amendments ON DELETE CASCADE,
+    bioguide_id      text NOT NULL,
+    sponsorship_date date,
+    is_original      boolean NOT NULL,
+    withdrawn_date   date,
+    PRIMARY KEY (amendment_id, bioguide_id)
+);
+
+CREATE TABLE IF NOT EXISTS amendment_actions (
+    amendment_id   text NOT NULL REFERENCES amendments ON DELETE CASCADE,
+    seq            int NOT NULL,
+    action_date    date NOT NULL,
+    action_time    time,
+    text           text NOT NULL,
+    action_type    text,
+    action_code    text,
+    source_name    text,
+    recorded_votes jsonb NOT NULL DEFAULT '[]',
+    PRIMARY KEY (amendment_id, seq)
+);
+
 CREATE TABLE IF NOT EXISTS events (
     event_id       bigserial PRIMARY KEY,
     bill_id        text NOT NULL REFERENCES bills ON DELETE CASCADE,
@@ -92,7 +132,8 @@ CREATE TABLE IF NOT EXISTS events (
     committee_code text,
     critter_id     text,
     source         text NOT NULL,
-    detail         text
+    detail         text,
+    amendment_id   text
 );
 CREATE INDEX IF NOT EXISTS events_bill ON events (bill_id);
 CREATE INDEX IF NOT EXISTS events_type_date ON events (event_type, event_date);
@@ -150,11 +191,22 @@ CREATE TABLE IF NOT EXISTS member_votes (
 );
 CREATE INDEX IF NOT EXISTS member_votes_critter ON member_votes (bioguide_id);
 
--- Bill actions that cite a roll call (from BILLSTATUS recordedVotes).
-CREATE OR REPLACE VIEW roll_call_actions AS
-SELECT rc.vote_id, a.bill_id, a.seq, a.action_date, a.action_code, a.source_name, a.text
-FROM bill_actions a
-CROSS JOIN LATERAL jsonb_array_elements(a.recorded_votes) v
+-- Bill and amendment actions that cite a roll call (from BILLSTATUS recordedVotes).
+DROP VIEW IF EXISTS roll_call_actions;
+CREATE VIEW roll_call_actions AS
+WITH cited AS (
+    SELECT a.bill_id, NULL::text AS amendment_id, a.seq, a.action_date, a.action_code,
+           a.source_name, a.text, a.recorded_votes
+    FROM bill_actions a
+    UNION ALL
+    SELECT am.bill_id, a.amendment_id, a.seq, a.action_date, a.action_code,
+           a.source_name, a.text, a.recorded_votes
+    FROM amendment_actions a JOIN amendments am USING (amendment_id)
+)
+SELECT rc.vote_id, c.bill_id, c.amendment_id, c.seq, c.action_date, c.action_code,
+       c.source_name, c.text
+FROM cited c
+CROSS JOIN LATERAL jsonb_array_elements(c.recorded_votes) v
 JOIN roll_calls rc
   ON rc.chamber = v->>'chamber'
  AND rc.congress = (v->>'congress')::int

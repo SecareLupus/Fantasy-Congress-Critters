@@ -5,20 +5,21 @@ scoring engine applies gating and authorship rules to them.
 
 Sources, in order of preference:
 - Sponsor and cosponsor lists, for introduction and cosponsorship.
+- Amendment records, for amendments offered, agreed to, and rejected.
 - Structured committee activities, for referral, hearings, markup, reporting, discharge.
 - Library of Congress action codes, for passage and presidential actions.
 - House floor action codes, for House scheduling and floor steps.
 - Senate and House committee action text, which carries no codes.
 
 The same step often appears in several sources; events are deduplicated on
-(type, date, chamber, committee, critter).
+(type, date, chamber, committee, critter, amendment).
 """
 
 import re
 from dataclasses import dataclass
 from datetime import date
 
-from .billstatus import Action, Bill
+from .billstatus import Action, Amendment, Bill
 
 LOC = "Library of Congress"
 HOUSE_FLOOR = "House floor actions"
@@ -36,10 +37,12 @@ class Event:
     critter_id: str | None = None
     source: str = ""
     detail: str | None = None
+    amendment_id: str | None = None
 
     @property
     def key(self) -> tuple:
-        return (self.event_type, self.event_date, self.chamber, self.committee_code, self.critter_id)
+        return (self.event_type, self.event_date, self.chamber, self.committee_code, self.critter_id,
+                self.amendment_id)
 
 
 COMMITTEE_ACTIVITIES = {
@@ -97,6 +100,23 @@ SENATE_FLOOR_PATTERNS = [
     (re.compile(r"senate appointed conferees", re.I), "CONFERENCE_APPOINTED"),
 ]
 
+# Library of Congress codes on amendment actions. Senate amendments are often only
+# submitted (filed, code 91000) and never brought up; only proposing one offers it.
+AMENDMENT_OFFERED_CODES = {"71000", "93000"}
+AMENDMENT_RESULT_CODES = {
+    "72000": "AMENDMENT_ADOPTED",  # House amendment agreed to
+    "76000": "AMENDMENT_ADOPTED",  # agreed to in Committee of the Whole
+    "79000": "AMENDMENT_ADOPTED",  # agreed to by the House after the Committee of the Whole
+    "94000": "AMENDMENT_ADOPTED",  # Senate amendment agreed to
+    "73000": "AMENDMENT_FAILED",
+    "77000": "AMENDMENT_FAILED",
+    "80000": "AMENDMENT_FAILED",
+    "95000": "AMENDMENT_FAILED",
+}
+
+# Roll call quoted in action text: House "(Roll no. 312)", Senate "Record Vote Number: 88".
+ROLL_IN_TEXT = re.compile(r"Roll no\. (\d+)|Record Vote Number:? (\d+)", re.I)
+
 ORDERED_REPORTED = re.compile(r"ordered to be reported", re.I)
 SENATE_HEARING = re.compile(r"hearings held", re.I)
 # Hearings that predate the bill are about the subject, not the measure.
@@ -144,6 +164,44 @@ def _action_events(bill: Bill, action: Action) -> list[Event]:
                 return [event(event_type, "Senate")] if event_type else []
 
     return []
+
+
+def _action_order(action: Action) -> tuple:
+    """Same-day actions are not reliably in order in the feed; a later roll call is later."""
+    match = ROLL_IN_TEXT.search(action.text)
+    roll = int(match.group(1) or match.group(2)) if match else 0
+    return (action.action_date, roll, action.seq)
+
+
+def _amendment_events(bill: Bill, amendment: Amendment) -> list[Event]:
+    """At most one offered event (the first) and one result (the last) per amendment.
+
+    A House amendment's result is often recorded twice, in the Committee of the Whole
+    and again by the House, and a close vote may be retaken; the last word stands.
+    """
+    loc = [a for a in amendment.actions if a.source_name == LOC]
+    offered = next((a for a in loc if a.action_code in AMENDMENT_OFFERED_CODES), None)
+    results = [a for a in loc if a.action_code in AMENDMENT_RESULT_CODES]
+    result = max(results, key=_action_order, default=None)
+
+    def event(event_type: str, action: Action) -> Event:
+        return Event(
+            bill_id=bill.bill_id,
+            event_type=event_type,
+            event_date=action.action_date,
+            chamber=amendment.chamber,
+            critter_id=amendment.sponsor_id,
+            source=f"amendment:{action.source_name}:{action.action_code}",
+            detail=action.text[:500],
+            amendment_id=amendment.amendment_id,
+        )
+
+    events = []
+    if offered:
+        events.append(event("AMENDMENT_OFFERED", offered))
+    if result:
+        events.append(event(AMENDMENT_RESULT_CODES[result.action_code], result))
+    return events
 
 
 def normalize_bill(bill: Bill) -> list[Event]:
@@ -204,6 +262,9 @@ def normalize_bill(bill: Bill) -> list[Event]:
 
     for action in bill.actions:
         events.extend(_action_events(bill, action))
+
+    for amendment in bill.amendments:
+        events.extend(_amendment_events(bill, amendment))
 
     seen: set[tuple] = set()
     unique = []

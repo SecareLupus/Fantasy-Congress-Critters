@@ -113,5 +113,115 @@
         <sponsorshipWithdrawnDate>2023-05-01</sponsorshipWithdrawnDate>
       </item>
     </cosponsors>
+    <amendments>
+      <amendment>
+        <number>235</number><congress>118</congress><type>HAMDT</type>
+        <sponsors><item><bioguideId>N000190</bioguideId><fullName>Rep. Norman, Ralph [R-SC-5]</fullName></item></sponsors>
+        <submittedDate>2023-07-13T04:00:00Z</submittedDate>
+        <chamber>House of Representatives</chamber>
+        <actions>
+          <count>4</count>
+          <actions>
+            <item>
+              <actionDate>2023-07-13</actionDate>
+              <text>House amendment not agreed to: On agreeing to the Norman amendment (A020) Failed by recorded vote: 216 - 216 (Roll no. 311).</text>
+              <type>Floor</type><actionCode>73000</actionCode>
+              <sourceSystem><code>9</code><name>Library of Congress</name></sourceSystem>
+            </item>
+            <item>
+              <actionDate>2023-07-13</actionDate>
+              <text>House amendment agreed to: On agreeing to the Norman amendment (A020) Agreed to by recorded vote: 214 - 213 (Roll no. 312).</text>
+              <type>Floor</type><actionCode>72000</actionCode>
+              <sourceSystem><code>9</code><name>Library of Congress</name></sourceSystem>
+            </item>
+            <item>
+              <actionDate>2023-07-13</actionDate>
+              <text>House amendment offered</text>
+              <type>Floor</type><actionCode>71000</actionCode>
+              <sourceSystem><code>9</code><name>Library of Congress</name></sourceSystem>
+            </item>
+            <item>
+              <actionDate>2023-07-13</actionDate>
+              <text>House amendment offered</text>
+              <type>Floor</type><actionCode>71000</actionCode>
+              <sourceSystem><code>9</code><name>Library of Congress</name></sourceSystem>
+            </item>
+          </actions>
+        </actions>
+      </amendment>
+      <amendment>
+        <number>12</number><congress>118</congress><type>HAMDT</type>
+        <description>Pursuant to the provisions of H. Res. 5, the amendment is considered as adopted.</description>
+        <sponsors><item><name>Rules Committee</name></item></sponsors>
+        <submittedDate>2023-07-12T04:00:00Z</submittedDate>
+        <chamber>House of Representatives</chamber>
+        <actions>
+          <count>1</count>
+          <actions>
+            <item>
+              <actionDate>2023-07-12</actionDate>
+              <text>House amendment agreed to: On agreeing to the Rules amendment (A001) Agreed to without objection.</text>
+              <type>Floor</type><actionCode>72000</actionCode>
+              <sourceSystem><code>9</code><name>Library of Congress</name></sourceSystem>
+            </item>
+          </actions>
+        </actions>
+      </amendment>
+      <amendment>
+        <number>2041</number><congress>118</congress><type>SAMDT</type>
+        <purpose>To strike the inflation forecasting exceptions.</purpose>
+        <sponsors><item><bioguideId>S000148</bioguideId><fullName>Sen. Schumer, Charles E. [D-NY]</fullName></item></sponsors>
+        <onBehalfOfSponsor><item><bioguideId>C000127</bioguideId><type>Proposed on behalf of</type></item></onBehalfOfSponsor>
+        <cosponsors>
+          <countIncludingWithdrawnCosponsors>1</countIncludingWithdrawnCosponsors>
+          <count>1</count>
+          <item><bioguideId>W000790</bioguideId><sponsorshipDate>2023-11-20</sponsorshipDate><isOriginalCosponsor>True</isOriginalCosponsor></item>
+        </cosponsors>
+        <submittedDate>2023-11-20T05:00:00Z</submittedDate>
+        <proposedDate>2023-11-21T05:00:00Z</proposedDate>
+        <chamber>Senate</chamber>
+        <amendedAmendment><number>2040</number><congress>118</congress><type>SAMDT</type></amendedAmendment>
+        <actions>
+          <count>3</count>
+          <actions>
+            <item>
+              <actionDate>2023-11-22</actionDate>
+              <text>Senate amendment agreed to: Amendment SA 2041 agreed to in Senate by Yea-Nay Vote. 60 - 38. Record Vote Number: 300.</text>
+              <type>Floor</type><actionCode>94000</actionCode>
+              <sourceSystem><code>9</code><name>Library of Congress</name></sourceSystem>
+            </item>
+            <item>
+              <actionDate>2023-11-21</actionDate>
+              <text>Senate amendment proposed (on the floor): Amendment SA 2041 proposed by Senator Cantwell for Senator Schumer.</text>
+              <type>Floor</type><actionCode>93000</actionCode>
+              <sourceSystem><code>9</code><name>Library of Congress</name></sourceSystem>
+            </item>
+            <item>
+              <actionDate>2023-11-20</actionDate>
+              <text>Senate amendment submitted</text>
+              <actionCode>91000</actionCode>
+              <sourceSystem><code>9</code><name>Library of Congress</name></sourceSystem>
+            </item>
+          </actions>
+        </actions>
+      </amendment>
+      <amendment>
+        <number>2050</number><congress>118</congress><type>SAMDT</type>
+        <sponsors><item><bioguideId>P000145</bioguideId><fullName>Sen. Padilla, Alex [D-CA]</fullName></item></sponsors>
+        <submittedDate>2023-11-20T05:00:00Z</submittedDate>
+        <chamber>Senate</chamber>
+        <actions>
+          <count>1</count>
+          <actions>
+            <item>
+              <actionDate>2023-11-20</actionDate>
+              <text>Senate amendment submitted</text>
+              <actionCode>91000</actionCode>
+              <sourceSystem><code>9</code><name>Library of Congress</name></sourceSystem>
+            </item>
+          </actions>
+        </actions>
+      </amendment>
+    </amendments>
   </bill>
 </billStatus>

@@ -50,6 +50,31 @@ class Action:
 
 
 @dataclass
+class Amendment:
+    congress: int
+    amendment_type: str  # hamdt | samdt
+    number: int
+    sponsor_id: str | None
+    sponsor_name: str | None  # set for committee-sponsored House amendments (e.g. Rules Committee)
+    on_behalf_of_id: str | None  # Senate: the senator who proposed it for the sponsor
+    submitted_date: date | None
+    proposed_date: date | None
+    description: str | None
+    purpose: str | None
+    amended_amendment_id: str | None  # set for an amendment to an amendment
+    cosponsors: list[Cosponsor] = field(default_factory=list)
+    actions: list[Action] = field(default_factory=list)
+
+    @property
+    def amendment_id(self) -> str:
+        return f"{self.congress}-{self.amendment_type}-{self.number}"
+
+    @property
+    def chamber(self) -> str:
+        return "House" if self.amendment_type == "hamdt" else "Senate"
+
+
+@dataclass
 class Bill:
     congress: int
     bill_type: str
@@ -64,6 +89,7 @@ class Bill:
     cosponsors: list[Cosponsor] = field(default_factory=list)
     committee_activities: list[CommitteeActivity] = field(default_factory=list)
     actions: list[Action] = field(default_factory=list)
+    amendments: list[Amendment] = field(default_factory=list)
 
     @property
     def bill_id(self) -> str:
@@ -116,40 +142,25 @@ def _committee_activities(item: Element, parent_code: str | None) -> list[Commit
     return activities
 
 
-def parse_bill(xml: bytes) -> Bill:
-    bill = fromstring(xml).find("bill")
-    sponsor = next(iter(_items(bill, "sponsors")), None)
-
-    result = Bill(
-        congress=int(_text(bill, "congress")),
-        bill_type=_text(bill, "type").lower(),
-        number=int(_text(bill, "number")),
-        title=_text(bill, "title"),
-        introduced_date=_date(_text(bill, "introducedDate")),
-        origin_chamber=_text(bill, "originChamber"),
-        policy_area=_text(bill, "policyArea/name"),
-        sponsor_id=_text(sponsor, "bioguideId"),
-        sponsor_by_request=_text(sponsor, "isByRequest") == "Y",
-        update_date=_datetime(_text(bill, "updateDate")),
-    )
-
-    for item in _items(bill, "cosponsors"):
-        result.cosponsors.append(
-            Cosponsor(
-                bioguide_id=_text(item, "bioguideId"),
-                sponsorship_date=_date(_text(item, "sponsorshipDate")),
-                is_original=_text(item, "isOriginalCosponsor") == "True",
-                withdrawn_date=_date(_text(item, "sponsorshipWithdrawnDate")),
-            )
+def _cosponsors(el: Element) -> list[Cosponsor]:
+    return [
+        Cosponsor(
+            bioguide_id=_text(item, "bioguideId"),
+            sponsorship_date=_date(_text(item, "sponsorshipDate")),
+            is_original=_text(item, "isOriginalCosponsor") == "True",
+            withdrawn_date=_date(_text(item, "sponsorshipWithdrawnDate")),
         )
+        for item in _items(el, "cosponsors")
+        if item.tag == "item"
+    ]
 
-    for item in _items(bill, "committees"):
-        result.committee_activities.extend(_committee_activities(item, None))
 
+def _actions(items: list[Element]) -> list[Action]:
     # The feed lists actions newest first; number them oldest first.
-    for seq, item in enumerate(reversed(_items(bill, "actions"))):
+    actions = []
+    for seq, item in enumerate(reversed([i for i in items if i.tag == "item"])):
         action_time = _text(item, "actionTime")
-        result.actions.append(
+        actions.append(
             Action(
                 seq=seq,
                 action_date=_date(_text(item, "actionDate")),
@@ -174,6 +185,58 @@ def parse_bill(xml: bytes) -> Bill:
                 ],
             )
         )
+    return actions
+
+
+def _amendment(item: Element) -> Amendment:
+    congress = int(_text(item, "congress"))
+    sponsor = next(iter(_items(item, "sponsors")), None)
+    on_behalf = next(iter(_items(item, "onBehalfOfSponsor")), None)
+    amended = item.find("amendedAmendment")
+    return Amendment(
+        congress=congress,
+        amendment_type=_text(item, "type").lower(),
+        number=int(_text(item, "number")),
+        sponsor_id=_text(sponsor, "bioguideId"),
+        sponsor_name=_text(sponsor, "fullName") or _text(sponsor, "name"),
+        on_behalf_of_id=_text(on_behalf, "bioguideId"),
+        submitted_date=_date(_text(item, "submittedDate")),
+        proposed_date=_date(_text(item, "proposedDate")),
+        description=_text(item, "description"),
+        purpose=_text(item, "purpose"),
+        amended_amendment_id=(
+            f"{_text(amended, 'congress')}-{_text(amended, 'type').lower()}-{_text(amended, 'number')}"
+            if amended is not None else None
+        ),
+        cosponsors=_cosponsors(item),
+        actions=_actions(_items(item, "actions/actions")),
+    )
+
+
+def parse_bill(xml: bytes) -> Bill:
+    bill = fromstring(xml).find("bill")
+    sponsor = next(iter(_items(bill, "sponsors")), None)
+
+    result = Bill(
+        congress=int(_text(bill, "congress")),
+        bill_type=_text(bill, "type").lower(),
+        number=int(_text(bill, "number")),
+        title=_text(bill, "title"),
+        introduced_date=_date(_text(bill, "introducedDate")),
+        origin_chamber=_text(bill, "originChamber"),
+        policy_area=_text(bill, "policyArea/name"),
+        sponsor_id=_text(sponsor, "bioguideId"),
+        sponsor_by_request=_text(sponsor, "isByRequest") == "Y",
+        update_date=_datetime(_text(bill, "updateDate")),
+    )
+
+    result.cosponsors = _cosponsors(bill)
+
+    for item in _items(bill, "committees"):
+        result.committee_activities.extend(_committee_activities(item, None))
+
+    result.actions = _actions(_items(bill, "actions"))
+    result.amendments = [_amendment(item) for item in _items(bill, "amendments")]
 
     return result
 

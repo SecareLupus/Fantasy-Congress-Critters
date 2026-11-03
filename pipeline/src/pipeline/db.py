@@ -4,7 +4,7 @@ from importlib.resources import files
 import psycopg
 from psycopg.types.json import Jsonb
 
-from .billstatus import Bill
+from .billstatus import Action, Bill
 from .config import DATABASE_URL
 from .normalize import Event
 from .rosters import Membership
@@ -18,6 +18,11 @@ def connect() -> psycopg.Connection:
 def init_schema(conn: psycopg.Connection) -> None:
     conn.execute(files("pipeline").joinpath("schema.sql").read_text())
     conn.commit()
+
+
+def _recorded_votes(action: Action) -> Jsonb:
+    return Jsonb([{"chamber": v.chamber, "congress": v.congress, "session": v.session,
+                   "roll_number": v.roll_number} for v in action.recorded_votes])
 
 
 def save_bill(conn: psycopg.Connection, bill: Bill, events: Iterable[Event]) -> None:
@@ -51,17 +56,38 @@ def save_bill(conn: psycopg.Connection, bill: Bill, events: Iterable[Event]) -> 
                    action_code, source_name, committee_codes, recorded_votes)
                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
             [(bill_id, a.seq, a.action_date, a.action_time, a.text, a.action_type, a.action_code,
-              a.source_name, a.committee_codes,
-              Jsonb([{"chamber": v.chamber, "congress": v.congress, "session": v.session,
-                      "roll_number": v.roll_number} for v in a.recorded_votes]))
-             for a in bill.actions],
+              a.source_name, a.committee_codes, _recorded_votes(a)) for a in bill.actions],
+        )
+        cur.executemany(
+            """INSERT INTO amendments (amendment_id, bill_id, congress, amendment_type, number,
+                   chamber, sponsor_id, sponsor_name, on_behalf_of_id, submitted_date,
+                   proposed_date, description, purpose, amended_amendment_id)
+               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
+            [(m.amendment_id, bill_id, m.congress, m.amendment_type, m.number, m.chamber,
+              m.sponsor_id, m.sponsor_name, m.on_behalf_of_id, m.submitted_date, m.proposed_date,
+              m.description, m.purpose, m.amended_amendment_id) for m in bill.amendments],
+        )
+        cur.executemany(
+            """INSERT INTO amendment_cosponsors (amendment_id, bioguide_id, sponsorship_date,
+                   is_original, withdrawn_date)
+               VALUES (%s, %s, %s, %s, %s) ON CONFLICT DO NOTHING""",
+            [(m.amendment_id, c.bioguide_id, c.sponsorship_date, c.is_original, c.withdrawn_date)
+             for m in bill.amendments for c in m.cosponsors],
+        )
+        cur.executemany(
+            """INSERT INTO amendment_actions (amendment_id, seq, action_date, action_time, text,
+                   action_type, action_code, source_name, recorded_votes)
+               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)""",
+            [(m.amendment_id, a.seq, a.action_date, a.action_time, a.text, a.action_type,
+              a.action_code, a.source_name, _recorded_votes(a))
+             for m in bill.amendments for a in m.actions],
         )
         cur.executemany(
             """INSERT INTO events (bill_id, event_type, event_date, chamber, committee_code,
-                   critter_id, source, detail)
-               VALUES (%s, %s, %s, %s, %s, %s, %s, %s)""",
+                   critter_id, source, detail, amendment_id)
+               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)""",
             [(e.bill_id, e.event_type, e.event_date, e.chamber, e.committee_code, e.critter_id,
-              e.source, e.detail) for e in events],
+              e.source, e.detail, e.amendment_id) for e in events],
         )
 
 
