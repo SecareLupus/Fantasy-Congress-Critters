@@ -90,6 +90,7 @@ class Bill:
     committee_activities: list[CommitteeActivity] = field(default_factory=list)
     actions: list[Action] = field(default_factory=list)
     amendments: list[Amendment] = field(default_factory=list)
+    subjects: list[str] = field(default_factory=list)  # CRS legislative subject terms
 
     @property
     def bill_id(self) -> str:
@@ -237,6 +238,8 @@ def parse_bill(xml: bytes) -> Bill:
 
     result.actions = _actions(_items(bill, "actions"))
     result.amendments = [_amendment(item) for item in _items(bill, "amendments")]
+    result.subjects = [name for item in _items(bill, "subjects/legislativeSubjects")
+                       if (name := _text(item, "name"))]
 
     return result
 

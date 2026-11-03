@@ -26,6 +26,17 @@ CREATE TABLE IF NOT EXISTS critter_terms (
     PRIMARY KEY (bioguide_id, start_date)
 );
 
+-- Chamber and party leadership posts (Speaker, floor leaders, whips, conference posts).
+-- end_date is the day the next holder takes over; NULL while held.
+CREATE TABLE IF NOT EXISTS critter_leadership (
+    bioguide_id text NOT NULL REFERENCES critters ON DELETE CASCADE,
+    chamber     text NOT NULL,
+    title       text NOT NULL,
+    start_date  date NOT NULL,
+    end_date    date,
+    PRIMARY KEY (bioguide_id, title, start_date)
+);
+
 CREATE TABLE IF NOT EXISTS committees (
     committee_code        text PRIMARY KEY,  -- BILLSTATUS system code, e.g. hsii00, hsii24
     parent_committee_code text,
@@ -56,6 +67,12 @@ CREATE TABLE IF NOT EXISTS bill_cosponsors (
     is_original      boolean NOT NULL,
     withdrawn_date   date,
     PRIMARY KEY (bill_id, bioguide_id)
+);
+
+CREATE TABLE IF NOT EXISTS bill_subjects (
+    bill_id text NOT NULL REFERENCES bills ON DELETE CASCADE,
+    subject text NOT NULL,  -- CRS legislative subject term
+    PRIMARY KEY (bill_id, subject)
 );
 
 CREATE TABLE IF NOT EXISTS bill_committee_activities (
@@ -157,6 +174,31 @@ CREATE TABLE IF NOT EXISTS committee_memberships (
 );
 CREATE INDEX IF NOT EXISTS committee_memberships_critter ON committee_memberships (bioguide_id);
 CREATE INDEX IF NOT EXISTS committee_memberships_committee ON committee_memberships (committee_code);
+
+-- Scoring runs: one per (ruleset, congress) computation. Items explain every point.
+CREATE TABLE IF NOT EXISTS score_runs (
+    run_id          bigserial PRIMARY KEY,
+    congress        int NOT NULL,
+    ruleset_version text NOT NULL,
+    ruleset         jsonb NOT NULL,
+    created_at      timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS score_items (
+    run_id         bigint NOT NULL REFERENCES score_runs ON DELETE CASCADE,
+    bioguide_id    text NOT NULL,
+    session        int NOT NULL,
+    pillar         text NOT NULL,  -- power | productivity
+    category       text NOT NULL,
+    item_date      date NOT NULL,
+    points         double precision NOT NULL,
+    bill_id        text,
+    amendment_id   text,
+    vote_id        text,
+    committee_code text,
+    detail         jsonb
+);
+CREATE INDEX IF NOT EXISTS score_items_run_critter ON score_items (run_id, bioguide_id);
 
 -- Roll-call votes. The bill reference comes from the chamber's own record; it is
 -- the measure the vote was on (a rule vote points at the H.Res, not the bill it governs).

@@ -46,6 +46,12 @@ def load_critters(conn: psycopg.Connection) -> int:
                   t.get("district"), t.get("class"), t.get("party"))
                  for t in person.get("terms", [])],
             )
+            cur.executemany(
+                """INSERT INTO critter_leadership (bioguide_id, chamber, title, start_date, end_date)
+                   VALUES (%s, %s, %s, %s, %s) ON CONFLICT DO NOTHING""",
+                [(bioguide, r["chamber"], r["title"], _date(r["start"]), _date(r.get("end")))
+                 for r in person.get("leadership_roles", [])],
+            )
     conn.commit()
     return len(people)
 

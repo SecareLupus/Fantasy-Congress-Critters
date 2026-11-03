@@ -1,0 +1,298 @@
+# Default ruleset (Design-Rulesets §6A.1). Every scoring constant lives here; the engine
+# has no point values of its own. Values marked "design" come from Design-Scoring;
+# the rest are first guesses to be tuned by backtest.
+version = "0.1.0"
+
+# Sessions run January 3 to January 3. Positional value is per session, prorated by days held.
+
+[productivity]
+# Multiplies every productivity item. Calibrated so the median full-session member earns
+# about as much from productivity as from power (`critters report` prints the even value).
+scale = 0.1
+
+# Bill-type weight on every event of a bill ("optional rarity modifier by bill type",
+# Design-Scoring §8.3 1.1). Simple resolutions are mostly commemorations or House rules.
+[bill_types]
+hr = 1.0
+s = 1.0
+hjres = 1.0
+sjres = 1.0
+hconres = 0.5
+sconres = 0.5
+hres = 0.2
+sres = 0.2
+
+# Ceremonial bills (post office and other facility namings, gold medals, commemorative
+# coins) take this weight instead of their bill-type weight when it is lower. A bill is
+# ceremonial if CRS tags it with `subject` and it has at most `max_subjects` subjects (big
+# bills carry the tag for a naming section), or if its title matches a pattern.
+[ceremonial]
+weight = 0.2
+subject = "Congressional tributes"
+max_subjects = 10
+title_patterns = [
+    "designate the facility of the United States Postal Service",
+    "gold medal",
+    "commemorative coin",
+    "(to (re)?name|to designate|redesignate) .*(building|courthouse|clinic|center|facility|station|highway|post office|memorial)",
+]
+
+[authorship]  # Design-Scoring §8.3, design values
+author = 5.0
+early = 2.5
+mid = 1.5
+late = 1.0
+procedural = 0.2
+
+[dilution]  # CreditShare(rank) = 1 / rank^exponent (Design-Scoring §3.2)
+default_exponent = 0.5
+# "Heavily diluted" outcomes use a steeper curve.
+heavy_exponent = 1.0
+
+# Productivity points per event type. `credit` says who scores:
+#   sponsor        the bill's sponsor (introduction)
+#   cosponsor      the joining co-sponsor
+#   backers        the sponsor and co-sponsors at the time of the event
+#   backers_gated  backers who also sit on the acting committee (Core Rule 4)
+#   amendment      the amendment's sponsor
+# `authorship = true` applies the authorship category and the dilution share.
+# `dilution = "heavy"` uses heavy_exponent. Event types not listed score nothing.
+[events.BILL_INTRODUCED]
+points = 2.0
+credit = "sponsor"
+authorship = true
+
+[events.COSPONSOR_ADDED]
+points = 1.0
+credit = "cosponsor"
+authorship = true
+
+[events.COMMITTEE_REFERRAL]
+points = 1.0
+credit = "backers_gated"
+
+[events.COMMITTEE_HEARING_HELD]
+points = 4.0
+credit = "backers_gated"
+
+[events.COMMITTEE_MARKUP]
+points = 6.0
+credit = "backers_gated"
+
+[events.ORDERED_REPORTED]
+points = 8.0
+credit = "backers_gated"
+
+[events.REPORTED]
+points = 8.0
+credit = "backers_gated"
+
+[events.COMMITTEE_DISCHARGED]
+points = 2.0
+credit = "backers_gated"
+
+[events.DISCHARGE_PETITION_FILED]
+points = 10.0
+credit = "backers"
+
+[events.PLACED_ON_CALENDAR]
+points = 3.0
+credit = "backers"
+
+[events.RULE_REPORTED]
+points = 5.0
+credit = "backers"
+
+[events.RULE_ADOPTED]
+points = 5.0
+credit = "backers"
+
+[events.MOTION_TO_PROCEED]
+points = 5.0
+credit = "backers"
+
+[events.CLOTURE_FILED]
+points = 4.0
+credit = "backers"
+
+[events.CLOTURE_INVOKED]
+points = 8.0
+credit = "backers"
+
+[events.FLOOR_CONSIDERATION]
+points = 5.0
+credit = "backers"
+
+[events.PASSED_CHAMBER]
+points = 20.0
+credit = "backers"
+authorship = true
+
+[events.CONFERENCE_APPOINTED]
+points = 5.0
+credit = "backers"
+
+[events.CONFERENCE_REPORT_AGREED]
+points = 10.0
+credit = "backers"
+
+[events.RESOLVED_DIFFERENCES]
+points = 10.0
+credit = "backers"
+
+[events.PRESENTED_TO_PRESIDENT]
+points = 10.0
+credit = "backers"
+
+[events.VETO_OVERRIDE_PASSED]
+points = 10.0
+credit = "backers"
+
+[events.BECAME_LAW]
+points = 50.0
+credit = "backers"
+authorship = true
+dilution = "heavy"
+
+[events.AMENDMENT_OFFERED]
+points = 2.0
+credit = "amendment"
+authorship = true
+
+[events.AMENDMENT_ADOPTED]
+points = 4.0
+credit = "amendment"
+authorship = true
+
+[events.AMENDMENT_FAILED]
+points = 0.5
+credit = "amendment"
+authorship = true
+
+# Per-critter, per-session caps on high-volume actions (Design-Scoring §9.1): only the
+# first N in a session score. Set near the 95th percentile of the 118th Congress.
+[caps]
+BILL_INTRODUCED = 50
+COSPONSOR_ADDED = 400
+AMENDMENT_OFFERED = 40
+
+[votes]  # Design-Scoring §7.1-7.3
+cast = 1.0              # yea, nay, or present
+confirmation = 0.0      # extra, on a vote on a nomination
+confirmation_success = 1.0  # extra, voting yea on a nomination that is confirmed
+
+# Positional points by the holder's chamber. Senators hold about twice as many seats
+# (median 4 committees and 9 subcommittees against 2 and 4 in the House), so their
+# positions are scaled to make the median senator even on power and productivity.
+[positions.chamber_factor]
+rep = 1.0
+sen = 0.5
+
+[positions.committee_tiers]  # base value per session (Design-Scoring §8.2)
+1 = 100
+2 = 70
+3 = 40
+4 = 15
+
+# Committee code -> tier. Select committees created at the session start are tiered too.
+[positions.committees]
+# Tier 1
+hsap00 = 1
+hswm00 = 1
+hsif00 = 1
+hsru00 = 1
+hsas00 = 1
+ssap00 = 1
+ssfi00 = 1
+ssas00 = 1
+ssfr00 = 1
+ssju00 = 1
+# Tier 2
+hsju00 = 2
+hsfa00 = 2
+hshm00 = 2
+hsbu00 = 2
+hspw00 = 2
+hsba00 = 2
+hsgo00 = 2
+hlig00 = 2
+ssbk00 = 2
+sscm00 = 2
+sseg00 = 2
+sshr00 = 2
+ssbu00 = 2
+ssga00 = 2
+slin00 = 2
+hszs00 = 2  # Select Committee on the CCP
+hsfd00 = 2  # Select Subcommittee on the Weaponization of the Federal Government
+hsvc00 = 2  # Select Subcommittee on the Coronavirus Pandemic
+# Tier 3
+hsag00 = 3
+hsed00 = 3
+hsii00 = 3
+hssy00 = 3
+hssm00 = 3
+hsvr00 = 3
+ssaf00 = 3
+ssev00 = 3
+spag00 = 3
+slia00 = 3
+ssra00 = 3
+sssb00 = 3
+ssva00 = 3
+# Tier 4
+hsha00 = 4
+hsso00 = 4
+slet00 = 4
+jslc00 = 4
+jspr00 = 4
+jstx00 = 4
+jsec00 = 4
+jcse00 = 4  # Commission on Security and Cooperation in Europe
+scnc00 = 4  # Senate Caucus on International Narcotics Control
+
+# Ad hoc bodies: a flat value per session, no role multipliers.
+[positions.ad_hoc]
+hszt00 = 30  # Task Force on the Attempted Assassination of Donald J. Trump
+
+[positions.committee_roles]  # full committee, design values
+chair = 3.0
+ranking_member = 2.0
+member = 1.0
+vice_chair = 1.0
+ex_officio = 0.0  # courtesy seats, usually held by leaders already scored elsewhere
+other = 1.0
+
+# A subcommittee seat adds the parent tier's base times this bonus.
+[positions.subcommittee_bonus]
+chair = 0.5           # design ×1.5
+member = 0.1          # design ×1.1
+ranking_member = 0.25  # not in the design
+vice_chair = 0.1
+ex_officio = 0.0
+other = 0.1
+
+[positions.leadership]  # value per session by title; unlisted titles use `default`
+default = 40
+"Speaker of the House" = 400
+"House Majority Leader" = 300
+"House Minority Leader" = 300
+"Senate Majority Leader" = 300
+"Senate Minority Leader" = 300
+"House Majority Whip" = 200
+"House Minority Whip" = 200
+"Senate Majority Whip" = 200
+"Senate Minority Whip" = 200
+"House Democratic Caucus Chair" = 100
+"House Republican Conference Chair" = 100
+"Senate Republican Conference Chair" = 100
+"President Pro Tempore of the Senate" = 100
+"Assistant House Minority Leader" = 100
+"Assistant Speaker of the House" = 100
+"Assistant Senate Majority Leader" = 100
+
+[participation]
+# Committee recorded votes are not loaded yet; committee seats use floor participation.
+committee_source = "floor"
+# Holders of these titles are not expected to vote; their positions are not multiplied.
+exempt_titles = ["Speaker of the House"]

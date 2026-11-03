@@ -31,6 +31,10 @@ def test_parse_basics(bill):
     assert bill.cosponsors[1].withdrawn_date == date(2023, 5, 1)
 
 
+def test_parse_subjects(bill):
+    assert bill.subjects == ["Federal lands", "Congressional tributes"]
+
+
 def test_actions_numbered_oldest_first(bill):
     assert bill.actions[0].action_date == date(2023, 3, 1)
     assert bill.actions[-1].text.startswith("Became Public Law")
