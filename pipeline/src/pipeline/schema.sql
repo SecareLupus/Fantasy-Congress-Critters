@@ -69,6 +69,12 @@ CREATE TABLE IF NOT EXISTS bill_cosponsors (
     PRIMARY KEY (bill_id, bioguide_id)
 );
 
+CREATE TABLE IF NOT EXISTS bill_subjects (
+    bill_id text NOT NULL REFERENCES bills ON DELETE CASCADE,
+    subject text NOT NULL,  -- CRS legislative subject term
+    PRIMARY KEY (bill_id, subject)
+);
+
 CREATE TABLE IF NOT EXISTS bill_committee_activities (
     bill_id               text NOT NULL REFERENCES bills ON DELETE CASCADE,
     committee_code        text NOT NULL,

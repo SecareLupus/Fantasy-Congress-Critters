@@ -10,6 +10,13 @@
     <congress>118</congress>
     <title>Sample Act</title>
     <policyArea><name>Public Lands and Natural Resources</name></policyArea>
+    <subjects>
+      <legislativeSubjects>
+        <item><name>Federal lands</name></item>
+        <item><name>Congressional tributes</name></item>
+      </legislativeSubjects>
+      <policyArea><name>Public Lands and Natural Resources</name></policyArea>
+    </subjects>
     <committees>
       <item>
         <systemCode>hsii00</systemCode>

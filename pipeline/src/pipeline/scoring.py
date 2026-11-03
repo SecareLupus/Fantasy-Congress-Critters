@@ -10,6 +10,7 @@ Two pipelines, kept separate as the design requires:
 Every constant comes from the ruleset; this module has no point values of its own.
 """
 
+import re
 import tomllib
 from collections import defaultdict
 from collections.abc import Callable, Iterable
@@ -110,6 +111,8 @@ class BillInputs:
     origin_chamber: str | None
     cosponsors: list[Cosponsor]
     events: list[EventRow]
+    title: str = ""
+    subjects: list[str] = field(default_factory=list)
 
 
 STAGE_EVENTS = [
@@ -162,6 +165,23 @@ def dilution_share(rank: int, exponent: float) -> float:
     return 1 / rank ** exponent
 
 
+def is_ceremonial(bill: BillInputs, ruleset: Ruleset) -> bool:
+    """Namings, gold medals, commemorative coins: tagged as a tribute by CRS on a narrow
+    bill, or titled like one. Big bills carry the tag for a naming section, hence the limit."""
+    rule = ruleset.raw["ceremonial"]
+    if rule["subject"] in bill.subjects and len(bill.subjects) <= rule["max_subjects"]:
+        return True
+    return any(re.search(pattern, bill.title, re.I) for pattern in rule["title_patterns"])
+
+
+def bill_weight(bill: BillInputs, ruleset: Ruleset) -> float:
+    """Bill-type weight, or the ceremonial weight when lower; the two don't stack."""
+    weight = ruleset.raw["bill_types"][bill.bill_type]
+    if is_ceremonial(bill, ruleset):
+        weight = min(weight, ruleset.raw["ceremonial"]["weight"])
+    return weight
+
+
 OnCommittee = Callable[[str, str, date], bool]
 
 
@@ -180,7 +200,7 @@ def score_bill(bill: BillInputs, ruleset: Ruleset, sessions: list[Session],
                 if c.sponsorship_date <= day and (c.withdrawn_date is None or c.withdrawn_date > day)]
         return ids
 
-    weight = ruleset.raw["bill_types"][bill.bill_type] * ruleset.raw["productivity"]["scale"]
+    weight = bill_weight(bill, ruleset) * ruleset.raw["productivity"]["scale"]
     items: list[ScoreItem] = []
     scored: set[tuple] = set()  # repeated actions on a bill score once (Design-Scoring §9.2)
     for event in sorted(bill.events, key=lambda e: e.event_date):

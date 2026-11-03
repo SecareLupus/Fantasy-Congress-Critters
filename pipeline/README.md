@@ -35,7 +35,7 @@ Raw files land in `data/raw/` (gitignored). `load` is idempotent: each bill and 
 
 ## Tables
 
-- `bills`, `bill_cosponsors`, `bill_committee_activities`, `bill_actions`: source records, lightly structured.
+- `bills`, `bill_cosponsors`, `bill_subjects`, `bill_committee_activities`, `bill_actions`: source records, lightly structured. `bill_subjects` holds CRS legislative subject terms.
 - `amendments`, `amendment_cosponsors`, `amendment_actions`: floor amendments to each bill, from the same BILLSTATUS file.
 - `events`: normalized ontology events, the only input the scoring engine reads. Events are facts about a bill; who earns credit is decided by the engine.
 - `committee_memberships`: who held which committee or subcommittee seat and role (`member`, `chair`, `ranking_member`, `vice_chair`, `ex_officio`) over which dates. `end_date` is exclusive. `first_seen`/`last_seen` are the snapshot dates behind each row.

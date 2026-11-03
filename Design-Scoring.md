@@ -991,17 +991,17 @@ The scoring engine (`pipeline/src/pipeline/scoring.py`) reads every constant fro
 **Weights and caps**
 
 * Bill-type weight on every event of a bill: bills and joint resolutions 1.0, concurrent resolutions 0.5, simple resolutions 0.2. Simple resolutions are mostly commemorations and House rules; in the 118th, 709 of the 1,709 measures that passed a chamber were simple resolutions.
+* Ceremonial bills (post office and other facility namings, Congressional Gold Medals, commemorative coins) are weighted 0.2, like simple resolutions; the lower of the two weights applies, without stacking. A bill is ceremonial if CRS tags it "Congressional tributes" and it has at most 10 subjects (big bills such as the NDAA carry the tag for one naming section), or if its title matches a naming, gold medal or coin pattern. In the 118th, 93 of the 274 laws were ceremonial (68 of them post office namings), and before the weight they earned 13.5% of all productivity points.
 * Per-critter session caps near the 118th's 95th percentile: 50 introductions, 400 co-sponsorships, 40 amendments offered. Items beyond a cap stay in the ledger at zero.
-* One productivity scale multiplies every productivity item. It is set so the median full-session member earns about as much from productivity as from power (0.09 for the 118th).
+* One productivity scale multiplies every productivity item. It is set so the median full-session member earns about as much from productivity as from power (0.1 for the 118th).
 
-**Balance (118th backtest).** Medians for members seated all year, power / productivity: House 165 / 158 in 2023 and 174 / 178 in 2024; Senate 193 / 183 and 199 / 214. Senators hold 3 of the top 10 in 2023 and 25 of the top 100, against 18% of members.
+**Balance (118th backtest).** Medians for members seated all year, power / productivity: House 165 / 172 in 2023 and 174 / 158 in 2024; Senate 193 / 199 and 199 / 211.
 
 ---
 
 ## 11. Open Design Questions (For Next Iteration)
 
 * Committee vote data: House committee votes are published (docs.house.gov) but not yet loaded; Senate committees don't publish recorded votes consistently. Until then, committee seats use floor participation.
-* Ceremonial laws: post office namings and similar bills score like substantive laws. A senator sponsoring several earns as much from each as from a major bill.
 * Vote weight: floor votes are about 27% of productivity in v0.1.
 * Delegates: whether delegates and the Resident Commissioner can be drafted. They vote only in the Committee of the Whole.
 * Amendment vs standalone bill weighting

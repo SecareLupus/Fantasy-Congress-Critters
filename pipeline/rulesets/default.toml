@@ -8,7 +8,7 @@ version = "0.1.0"
 [productivity]
 # Multiplies every productivity item. Calibrated so the median full-session member earns
 # about as much from productivity as from power (`critters report` prints the even value).
-scale = 0.09
+scale = 0.1
 
 # Bill-type weight on every event of a bill ("optional rarity modifier by bill type",
 # Design-Scoring §8.3 1.1). Simple resolutions are mostly commemorations or House rules.
@@ -21,6 +21,21 @@ hconres = 0.5
 sconres = 0.5
 hres = 0.2
 sres = 0.2
+
+# Ceremonial bills (post office and other facility namings, gold medals, commemorative
+# coins) take this weight instead of their bill-type weight when it is lower. A bill is
+# ceremonial if CRS tags it with `subject` and it has at most `max_subjects` subjects (big
+# bills carry the tag for a naming section), or if its title matches a pattern.
+[ceremonial]
+weight = 0.2
+subject = "Congressional tributes"
+max_subjects = 10
+title_patterns = [
+    "designate the facility of the United States Postal Service",
+    "gold medal",
+    "commemorative coin",
+    "(to (re)?name|to designate|redesignate) .*(building|courthouse|clinic|center|facility|station|highway|post office|memorial)",
+]
 
 [authorship]  # Design-Scoring §8.3, design values
 author = 5.0

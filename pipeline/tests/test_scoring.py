@@ -12,10 +12,12 @@ from pipeline.scoring import (
     Ruleset,
     VoteRow,
     apply_caps,
+    bill_weight,
     coalition_ranks,
     congress_sessions,
     cosponsor_category,
     floor_participation,
+    is_ceremonial,
     score_bill,
     score_positions,
     score_votes,
@@ -103,6 +105,30 @@ def test_simple_resolutions_are_weighted_down(ruleset):
     intro = [event("BILL_INTRODUCED", D(2023, 1, 9), critter="SPONSOR")]
     [item] = score_bill(bill(intro, bill_type="sres"), ruleset, SESSIONS, never)
     assert item.points == pytest.approx(2.0 * 5.0 * 0.2)
+
+
+def named(title="", subjects=(), bill_type="hr"):
+    b = bill([], bill_type=bill_type)
+    b.title, b.subjects = title, list(subjects)
+    return b
+
+
+def test_ceremonial_bills_by_title_or_narrow_tribute_tag(ruleset):
+    assert is_ceremonial(named("To designate the facility of the United States Postal Service at 1 Main St"), ruleset)
+    assert is_ceremonial(named("To name the Department of Veterans Affairs clinic in Gallup as the X Clinic"), ruleset)
+    assert is_ceremonial(named("James R. Dominguez Memorial Act", ["Congressional tributes", "Veterans"]), ruleset)
+    # A big bill tagged for one naming section is not ceremonial.
+    assert not is_ceremonial(named("National Defense Authorization Act",
+                                   ["Congressional tributes"] + [f"s{n}" for n in range(20)]), ruleset)
+    assert not is_ceremonial(named("Secure the Border Act", ["Immigration"]), ruleset)
+
+
+def test_ceremonial_weight_replaces_a_higher_bill_type_weight(ruleset):
+    postal = "To designate the facility of the United States Postal Service at 1 Main St"
+    assert bill_weight(named(postal), ruleset) == 0.2
+    assert bill_weight(named(postal, bill_type="hconres"), ruleset) == 0.2
+    assert bill_weight(named("Congratulating a team", bill_type="sres"), ruleset) == 0.2
+    assert bill_weight(named("Secure the Border Act"), ruleset) == 1.0
 
 
 # --- who scores ---------------------------------------------------------------------

@@ -45,6 +45,10 @@ def save_bill(conn: psycopg.Connection, bill: Bill, events: Iterable[Event]) -> 
              for c in bill.cosponsors],
         )
         cur.executemany(
+            "INSERT INTO bill_subjects (bill_id, subject) VALUES (%s, %s) ON CONFLICT DO NOTHING",
+            [(bill_id, subject) for subject in bill.subjects],
+        )
+        cur.executemany(
             """INSERT INTO bill_committee_activities (bill_id, committee_code, parent_committee_code,
                    committee_name, chamber, activity, activity_at)
                VALUES (%s, %s, %s, %s, %s, %s, %s)""",
@@ -156,10 +160,12 @@ def scoring_inputs(conn: psycopg.Connection, congress: int):
     from .scoring import BillInputs, Cosponsor, EventRow, Position, VoteRow
 
     bills = {
-        bill_id: BillInputs(bill_id, bill_type, sponsor, by_request, origin, [], [])
-        for bill_id, bill_type, sponsor, by_request, origin in conn.execute(
-            """SELECT bill_id, bill_type, sponsor_id, sponsor_by_request, origin_chamber
-               FROM bills WHERE congress = %s""", (congress,))
+        bill_id: BillInputs(bill_id, bill_type, sponsor, by_request, origin, [], [], title or "", subjects)
+        for bill_id, bill_type, sponsor, by_request, origin, title, subjects in conn.execute(
+            """SELECT b.bill_id, b.bill_type, b.sponsor_id, b.sponsor_by_request, b.origin_chamber, b.title,
+                      coalesce(array_agg(s.subject) FILTER (WHERE s.subject IS NOT NULL), '{}')
+               FROM bills b LEFT JOIN bill_subjects s USING (bill_id)
+               WHERE b.congress = %s GROUP BY b.bill_id""", (congress,))
     }
     for bill_id, *row in conn.execute(
         """SELECT c.bill_id, c.bioguide_id, c.sponsorship_date, c.is_original, c.withdrawn_date
