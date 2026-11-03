@@ -283,6 +283,7 @@ class Position:
     role: str | None
     start: date
     end: date  # exclusive
+    chamber: str | None = None  # the holder's chamber: rep | sen
 
 
 def position_value(position: Position, ruleset: Ruleset) -> tuple[str, float] | None:
@@ -315,6 +316,7 @@ def score_positions(positions: Iterable[Position], ruleset: Ruleset, sessions: l
         if valued is None or valued[1] == 0:
             continue
         category, value = valued
+        value *= ruleset.raw["positions"]["chamber_factor"].get(pos.chamber, 1.0)
         for s in sessions:
             start, end = max(pos.start, s.start), min(pos.end, s.end)
             if start >= end:
@@ -325,7 +327,8 @@ def score_positions(positions: Iterable[Position], ruleset: Ruleset, sessions: l
             items.append(ScoreItem(
                 pos.bioguide_id, s.number, "power", category, start, points,
                 committee_code=pos.key if pos.kind == "committee" else None,
-                detail={"key": pos.key, "role": pos.role, "value": value, "days": days,
+                detail={"key": pos.key, "role": pos.role, "chamber": pos.chamber,
+                        "value": value, "days": days,
                         "session_days": s.days, "participation": round(rate, 4)},
             ))
     return items

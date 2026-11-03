@@ -233,6 +233,11 @@ def score_report(conn: psycopg.Connection, run_id: int) -> dict:
     even_scale = conn.execute(f"""
         SELECT percentile_cont(0.5) WITHIN GROUP (ORDER BY power / productivity)
         FROM ({totals}) t WHERE productivity > 0""", args).fetchone()[0]
+    even_chamber_factor = conn.execute(f"""
+        SELECT t.chamber, coalesce((r.ruleset->'positions'->'chamber_factor'->>t.chamber)::float, 1.0),
+               percentile_cont(0.5) WITHIN GROUP (ORDER BY productivity / power)
+        FROM ({totals}) t JOIN score_runs r ON r.run_id = %(run)s
+        WHERE power > 0 GROUP BY 1, 2 ORDER BY 1""", args).fetchall()
     composition = conn.execute("""
         SELECT pillar, category, sum(points), 100 * sum(points) / sum(sum(points)) OVER (PARTITION BY pillar)
         FROM score_items WHERE run_id = %(run)s GROUP BY 1, 2 ORDER BY 1, 3 DESC""", args).fetchall()
@@ -241,4 +246,5 @@ def score_report(conn: psycopg.Connection, run_id: int) -> dict:
         FROM (SELECT *, row_number() OVER (PARTITION BY session ORDER BY power + productivity DESC) AS n
               FROM ({totals}) t) t
         JOIN critters c USING (bioguide_id) WHERE n <= 10 ORDER BY 1, n""", args).fetchall()
-    return {"balance": balance, "even_scale": even_scale, "composition": composition, "top": top}
+    return {"balance": balance, "even_scale": even_scale, "even_chamber_factor": even_chamber_factor,
+            "composition": composition, "top": top}

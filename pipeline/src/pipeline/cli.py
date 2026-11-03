@@ -68,6 +68,10 @@ def score_congress(conn, congress: int, ruleset: scoring.Ruleset) -> tuple[int, 
                 if title in exempt_titles:
                     exempt.setdefault(bioguide, []).append((p_start, p_end))
 
+    terms = db.chamber_terms(conn)
+    for pos in positions:
+        pos.chamber = "sen" if any(a <= pos.start <= b for a, b in terms.get((pos.bioguide_id, "sen"), [])) else "rep"
+
     memberships: dict[tuple, list] = {}
     for pos in positions:
         if pos.kind == "committee":
@@ -76,8 +80,6 @@ def score_congress(conn, congress: int, ruleset: scoring.Ruleset) -> tuple[int, 
     def on_committee(bioguide: str, code: str, day) -> bool:
         parent = code[:4] + scoring.FULL_COMMITTEE_SUFFIX
         return any(a <= day < b for c in (code, parent) for a, b in memberships.get((bioguide, c), []))
-
-    terms = db.chamber_terms(conn)
 
     def seated(bioguide: str, day) -> bool:
         return any(a <= day <= b for tt in ("rep", "sen") for a, b in terms.get((bioguide, tt), []))
@@ -113,6 +115,8 @@ def cmd_report(args) -> None:
         print(f"{session:>7} {chamber:>7} {n:>4} {med_pow:>10.1f} {med_prod:>9.1f} {max_pow:>10.1f} {max_prod:>9.1f}")
     print(f"productivity scale for an even median member: {float(scale) * report['even_scale']:.4f}"
           f" (this run: {scale})")
+    for chamber, factor, ratio in report["even_chamber_factor"]:
+        print(f"{chamber} power factor for an even median member: {factor * ratio:.3f} (this run: {factor})")
     print("\ncomposition")
     for pillar, category, points, pct in report["composition"]:
         print(f"  {pillar:<13} {category:<26} {points:>10.0f} {pct:>5.1f}%")

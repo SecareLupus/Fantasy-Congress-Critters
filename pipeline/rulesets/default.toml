@@ -8,7 +8,7 @@ version = "0.1.0"
 [productivity]
 # Multiplies every productivity item. Calibrated so the median full-session member earns
 # about as much from productivity as from power (`critters report` prints the even value).
-scale = 0.1
+scale = 0.09
 
 # Bill-type weight on every event of a bill ("optional rarity modifier by bill type",
 # Design-Scoring §8.3 1.1). Simple resolutions are mostly commemorations or House rules.
@@ -165,6 +165,13 @@ AMENDMENT_OFFERED = 40
 cast = 1.0              # yea, nay, or present
 confirmation = 0.0      # extra, on a vote on a nomination
 confirmation_success = 1.0  # extra, voting yea on a nomination that is confirmed
+
+# Positional points by the holder's chamber. Senators hold about twice as many seats
+# (median 4 committees and 9 subcommittees against 2 and 4 in the House), so their
+# positions are scaled to make the median senator even on power and productivity.
+[positions.chamber_factor]
+rep = 1.0
+sen = 0.5
 
 [positions.committee_tiers]  # base value per session (Design-Scoring §8.2)
 1 = 100

@@ -220,6 +220,13 @@ def test_ad_hoc_and_leadership_values(ruleset):
         ("AD_HOC_SEAT", 30.0), ("LEADERSHIP", 40.0), ("LEADERSHIP", 400.0)]
 
 
+def test_senate_positions_use_the_chamber_factor(ruleset):
+    house, senate = seat("hsap00"), seat("ssap00")
+    senate.chamber, house.chamber = "sen", "rep"
+    items = score_positions([house, senate], ruleset, SESSIONS[:1], full)
+    assert sorted(i.points for i in items) == [100 * ruleset.raw["positions"]["chamber_factor"]["sen"], 100.0]
+
+
 def test_positions_prorate_by_session_and_multiply_participation(ruleset):
     pos = seat("hsap00", start=D(2023, 7, 3), end=D(2024, 7, 3))
     items = score_positions([pos], ruleset, SESSIONS, lambda who, a, b: 0.5)

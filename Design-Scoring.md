@@ -986,19 +986,21 @@ The scoring engine (`pipeline/src/pipeline/scoring.py`) reads every constant fro
 * Select committees formed at the session start are tiered: the China select committee and the Weaponization and Coronavirus select subcommittees at Tier 2; the Helsinki Commission and the Senate narcotics caucus at Tier 4. Ad hoc task forces are a flat 30.
 * Leadership posts, per session: Speaker 400; floor leaders 300; whips 200; party conference or caucus chairs, President pro tempore and assistant leaders 100; other elected posts 40.
 * Participation: committee seats use floor participation until committee votes are loaded. The Speaker, who by custom rarely votes, is exempt.
+* Chamber factor: senators' positional points are multiplied by 0.5. Senators hold about twice as many seats as House members (median 4 committees and 9 subcommittees, against 2 and 4), so without it the median senator had 386 power against 165 and senators took the whole top 10. Cross-chamber value is otherwise left to pricing and per-chamber roster slots.
 
 **Weights and caps**
 
 * Bill-type weight on every event of a bill: bills and joint resolutions 1.0, concurrent resolutions 0.5, simple resolutions 0.2. Simple resolutions are mostly commemorations and House rules; in the 118th, 709 of the 1,709 measures that passed a chamber were simple resolutions.
 * Per-critter session caps near the 118th's 95th percentile: 50 introductions, 400 co-sponsorships, 40 amendments offered. Items beyond a cap stay in the ledger at zero.
-* One productivity scale multiplies every productivity item. It is set so the median full-session member earns about as much from productivity as from power (0.1 for the 118th).
+* One productivity scale multiplies every productivity item. It is set so the median full-session member earns about as much from productivity as from power (0.09 for the 118th).
+
+**Balance (118th backtest).** Medians for members seated all year, power / productivity: House 165 / 158 in 2023 and 174 / 178 in 2024; Senate 193 / 183 and 199 / 214. Senators hold 3 of the top 10 in 2023 and 25 of the top 100, against 18% of members.
 
 ---
 
 ## 11. Open Design Questions (For Next Iteration)
 
 * Committee vote data: House committee votes are published (docs.house.gov) but not yet loaded; Senate committees don't publish recorded votes consistently. Until then, committee seats use floor participation.
-* Chamber balance: with one productivity scale, the median House member is even (165 power, 176 productivity in 2023) but the median senator is power-heavy (386 power, 203 productivity), because senators hold three or four committees. Senators take every top-10 spot.
 * Ceremonial laws: post office namings and similar bills score like substantive laws. A senator sponsoring several earns as much from each as from a major bill.
 * Vote weight: floor votes are about 27% of productivity in v0.1.
 * Delegates: whether delegates and the Resident Commissioner can be drafted. They vote only in the Committee of the Whole.
