@@ -212,6 +212,17 @@ CREATE TABLE IF NOT EXISTS score_items (
 );
 CREATE INDEX IF NOT EXISTS score_items_run_critter ON score_items (run_id, bioguide_id);
 
+-- A run's points by settlement week (seats split across the weeks held), for standings.
+CREATE TABLE IF NOT EXISTS weekly_points (
+    run_id       bigint NOT NULL REFERENCES score_runs ON DELETE CASCADE,
+    bioguide_id  text NOT NULL,
+    session      int NOT NULL,
+    week         int NOT NULL,
+    power        double precision NOT NULL,
+    productivity double precision NOT NULL,
+    PRIMARY KEY (run_id, session, bioguide_id, week)
+);
+
 -- Roll-call votes. The bill reference comes from the chamber's own record; it is
 -- the measure the vote was on (a rule vote points at the H.Res, not the bill it governs).
 CREATE TABLE IF NOT EXISTS roll_calls (
@@ -312,3 +323,38 @@ CREATE TABLE IF NOT EXISTS leagues (
     updated_at      timestamptz NOT NULL DEFAULT now(),
     CHECK (start_date < end_date)
 );
+
+-- A player's roster in a league (Design-Pages §13.7).
+CREATE TABLE IF NOT EXISTS rosters (
+    roster_id bigserial PRIMARY KEY,
+    league_id bigint NOT NULL REFERENCES leagues ON DELETE CASCADE,
+    player    text NOT NULL,
+    joined_on date NOT NULL,
+    UNIQUE (league_id, player)
+);
+
+-- Purchases and drops (Design-Economy §5.2). A purchase records the price paid, which
+-- doesn't change with later repricing, and the settlement weeks it reserved. A drop points
+-- at its purchase and records the first week the critter is no longer held.
+CREATE TABLE IF NOT EXISTS transactions (
+    txn_id         bigserial PRIMARY KEY,
+    roster_id      bigint NOT NULL REFERENCES rosters ON DELETE CASCADE,
+    kind           text NOT NULL CHECK (kind IN ('purchase', 'drop')),
+    bioguide_id    text NOT NULL,
+    congress       int NOT NULL,
+    session        int NOT NULL,
+    made_on        date NOT NULL,
+    week           int NOT NULL,  -- purchase: first week held; drop: first week no longer held
+    purchase_id    bigint REFERENCES transactions,  -- drop: the purchase it ends
+    price_run      bigint REFERENCES score_runs,     -- purchase: the run it was priced from
+    chamber        text,
+    session_cost   int,
+    signing_fee    double precision,
+    weekly_fee     double precision,
+    last_week      int,   -- purchase: last week reserved
+    extra_fee      int NOT NULL DEFAULT 0,
+    points_penalty double precision NOT NULL DEFAULT 0,
+    created_at     timestamptz NOT NULL DEFAULT now(),
+    CHECK ((kind = 'purchase') = (purchase_id IS NULL))
+);
+CREATE INDEX IF NOT EXISTS transactions_roster ON transactions (roster_id);

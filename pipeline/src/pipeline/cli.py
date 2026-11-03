@@ -2,12 +2,13 @@ import argparse
 import json
 import time
 import tomllib
+from dataclasses import dataclass
 from datetime import date, timedelta
 from statistics import correlation, quantiles
 
 from pathlib import Path
 
-from . import db, download, fec, leagues, legislators, pricing, rosters, scoring
+from . import db, download, fec, leagues, ledger, legislators, pricing, rosters, scoring
 from .billstatus import iter_zip
 from .config import BILL_TYPES
 from .normalize import normalize_bill
@@ -101,16 +102,21 @@ def score_congress(conn, congress: int, ruleset: scoring.Ruleset) -> tuple[int, 
         return "sen" if any(a <= day <= b for a, b in terms.get((bioguide, "sen"), [])) else "rep"
 
     scoring.apply_chamber_factor(items, ruleset, chamber_of)
-    items.extend(scoring.score_positions(positions, ruleset, sessions,
-                                         scoring.floor_participation(votes, exempt, sessions,
-                                                                     ruleset.raw["settlement"]["weeks"])))
-    return db.save_score_run(conn, congress, ruleset, items), items
+    weeks = ruleset.raw["settlement"]["weeks"]
+    participation = scoring.floor_participation(votes, exempt, sessions, weeks)
+    items.extend(scoring.score_positions(positions, ruleset, sessions, participation))
+    weekly = scoring.weekly_points(items, sessions, participation, weeks)
+    return db.save_score_run(conn, congress, ruleset, items, weekly), items
 
 
 def cmd_score(args) -> None:
-    ruleset = scoring.Ruleset.load(args.ruleset)
     with db.connect() as conn:
         db.init_schema(conn)
+        if args.league:
+            league = _league(conn, args.league)
+            ruleset = scoring.Ruleset(league["ruleset_version"], league["ruleset"])
+        else:
+            ruleset = scoring.Ruleset.load(args.ruleset)
         start = time.time()
         run_id, items = score_congress(conn, args.congress, ruleset)
         print(f"run {run_id}: ruleset {ruleset.version}, {len(items)} items ({time.time() - start:.1f}s)")
@@ -335,6 +341,206 @@ def cmd_league_show(args) -> None:
             _print_league(league)
 
 
+def _league(conn, league_id: int) -> dict:
+    found = db.leagues(conn, league_id)
+    if not found:
+        raise SystemExit(f"no league {league_id}")
+    return found[0]
+
+
+def _roster(conn, league: dict, player: str) -> dict:
+    found = db.rosters(conn, league["league_id"], player)
+    if not found:
+        raise SystemExit(f"{player} has no roster in league {league['league_id']}: critters league join")
+    return found[0]
+
+
+def _legislative_year(day: date) -> int:
+    return day.year if day >= date(day.year, 1, 3) else day.year - 1
+
+
+@dataclass
+class _Market:
+    """One legislative year of a league: its weeks, and the run it scores and prices from."""
+    year: int
+    congress: int
+    session: scoring.Session
+    cal: ledger.Calendar
+    run_id: int | None
+
+
+def _market(conn, league: dict, year: int) -> _Market:
+    congress, index = divmod(year - 1787, 2)
+    session = scoring.congress_sessions(congress)[index]
+    cal = ledger.Calendar.build(session, league["ruleset"]["settlement"]["weeks"],
+                                league["start_date"], league["end_date"])
+    return _Market(year, congress, session, cal, db.league_run(conn, league["ruleset"], congress))
+
+
+def _league_years(conn, league: dict) -> list[_Market]:
+    years = range(_legislative_year(league["start_date"]), _legislative_year(league["end_date"]) + 1)
+    return [m for m in (_market(conn, league, y) for y in years) if m.cal.weeks]
+
+
+def _check_date(conn, roster: dict, day: date) -> None:
+    floor = max(roster["joined_on"], db.last_transaction(conn, roster["roster_id"]) or roster["joined_on"])
+    if day < floor:
+        raise SystemExit(f"{roster['player']} joined or last traded on {floor}; a transaction can't be dated earlier")
+
+
+def _one_critter(conn, text: str, among: list[str] | None = None) -> tuple[str, str]:
+    found = db.find_critters(conn, text, among)
+    if len(found) != 1:
+        raise SystemExit(f"{text!r} matches {len(found)} critters" +
+                         (": " + ", ".join(f"{b} {n}" for b, n in found[:8]) if found else ""))
+    return found[0]
+
+
+def cmd_league_join(args) -> None:
+    with db.connect() as conn:
+        db.init_schema(conn)
+        league = _league(conn, args.league)
+        if args.on >= league["end_date"]:
+            raise SystemExit(f"league {args.league} ended on {league['end_date']}")
+        if db.rosters(conn, args.league, args.player):
+            raise SystemExit(f"{args.player} already has a roster in league {args.league}")
+        db.join_league(conn, args.league, args.player, args.on)
+    print(f"{args.player} joined league {args.league} ({league['name']}) on {args.on}")
+
+
+def cmd_league_buy(args) -> None:
+    with db.connect() as conn:
+        db.init_schema(conn)
+        league = _league(conn, args.league)
+        roster = _roster(conn, league, args.player)
+        _check_date(conn, roster, args.on)
+        m = _market(conn, league, args.year or _legislative_year(max(args.on, league["start_date"])))
+        if not m.cal.weeks:
+            raise SystemExit(f"league {args.league} has no weeks in {m.year}")
+        if m.run_id is None:
+            raise SystemExit(f"no scoring run of the {m.congress}th Congress uses league {args.league}'s ruleset: "
+                             f"critters score --congress {m.congress} --league {args.league}")
+        settings = league["settings"]
+        market = db.priced(conn, m.run_id, m.session.number)
+        if not market:
+            raise SystemExit(f"no prices for {m.year} in run {m.run_id}: "
+                             f"critters price --run {m.run_id} --session {m.session.number}")
+        for text in args.critters:
+            bioguide, name = _one_critter(conn, text, market)
+            price = db.critter_price(conn, m.run_id, m.session.number, bioguide)
+            end = db.service_end(conn, bioguide, max(args.on, m.session.start))
+            if end is None:
+                raise SystemExit(f"{name} is not in office on {max(args.on, m.session.start)}")
+            held = db.holdings(conn, roster["roster_id"], m.congress, m.session)
+            try:
+                h = ledger.purchase(held, m.cal, settings, args.on, bioguide_id=bioguide, **price,
+                                    left_office=end if end < m.session.end else None)
+            except ledger.Refused as e:
+                raise SystemExit(f"can't buy {name}: {e}")
+            db.record_purchase(conn, roster["roster_id"], m.congress, m.session.number, m.run_id, h)
+            weeks = h.last_week - h.first_week + 1
+            print(f"{args.player} bought {name} ({h.chamber}) on {args.on} for {m.year}: ${h.session_cost:,} "
+                  f"Session Cost, ${h.signing_fee:,.2f} signing + {weeks} weeks at ${h.weekly_fee:,.2f} "
+                  f"from week {h.first_week}")
+        b = ledger.budget(db.holdings(conn, roster["roster_id"], m.congress, m.session), m.cal,
+                          settings["budget_rules"]["annual_budget"], args.on)
+    print(f"available ${b.available:,.2f} of ${b.budget:,}")
+
+
+def cmd_league_drop(args) -> None:
+    with db.connect() as conn:
+        db.init_schema(conn)
+        league = _league(conn, args.league)
+        roster = _roster(conn, league, args.player)
+        _check_date(conn, roster, args.on)
+        m = _market(conn, league, args.year or _legislative_year(max(args.on, league["start_date"])))
+        settings = league["settings"]
+        for text in args.critters:
+            held = db.holdings(conn, roster["roster_id"], m.congress, m.session)
+            bioguide, name = _one_critter(conn, text, [h.bioguide_id for h in held if h.active(args.on)])
+            try:
+                h = ledger.drop(held, m.cal, settings, args.on, bioguide)
+            except ledger.Refused as e:
+                raise SystemExit(f"can't drop {name}: {e}")
+            db.record_drop(conn, roster["roster_id"], m.congress, m.session.number, h)
+            returned = h.weekly_fee * max(0, h.last_week - h.drop_week + 1)
+            print(f"{args.player} dropped {name} on {args.on}: held through week {h.drop_week - 1}, "
+                  f"${returned:,.2f} reserved returned"
+                  + (f", ${h.extra_fee:,} drop fee" if h.extra_fee else "")
+                  + (f", {h.points_penalty:g} points penalty" if h.points_penalty else ""))
+        b = ledger.budget(db.holdings(conn, roster["roster_id"], m.congress, m.session), m.cal,
+                          settings["budget_rules"]["annual_budget"], args.on)
+    print(f"available ${b.available:,.2f} of ${b.budget:,}")
+
+
+def _roster_points(conn, roster: dict, markets: list[_Market], as_of: date) -> dict:
+    """Points and budget of a roster in each legislative year, as of `as_of`."""
+    out = {}
+    for m in markets:
+        held = db.holdings(conn, roster["roster_id"], m.congress, m.session)
+        weekly = db.roster_weekly_points(conn, m.run_id, m.session.number, [h.bioguide_id for h in held]) \
+            if m.run_id else {}
+        by = [(h, ledger.points(h, m.cal, weekly, as_of)) for h in held]
+        out[m.year] = {"holdings": by, "penalties": ledger.penalties(held, as_of),
+                       "power": sum(p for _, (p, _) in by), "productivity": sum(q for _, (_, q) in by)}
+    return out
+
+
+def cmd_league_roster(args) -> None:
+    with db.connect() as conn:
+        db.init_schema(conn)
+        league = _league(conn, args.league)
+        roster = _roster(conn, league, args.player)
+        markets = [m for m in _league_years(conn, league) if args.year in (None, m.year)]
+        scored = _roster_points(conn, roster, markets, args.on)
+        names = dict(conn.execute("SELECT bioguide_id, official_full_name FROM critters").fetchall())
+    annual = league["settings"]["budget_rules"]["annual_budget"]
+    print(f"{args.player} in league {league['league_id']} ({league['name']}), as of {args.on}")
+    for m in markets:
+        s = scored[m.year]
+        held = [h for h, _ in s["holdings"]]
+        b = ledger.budget(held, m.cal, annual, args.on)
+        settled = m.cal.settled(args.on)
+        print(f"\n{m.year} (weeks {m.cal.weeks[0]}-{m.cal.weeks[-1]}, {len(settled)} settled; run {m.run_id})")
+        print(f"  budget ${b.budget:,}: spent ${b.spent:,.2f}, reserved ${b.reserved:,.2f}, "
+              f"available ${b.available:,.2f}")
+        for h, (p, q) in s["holdings"]:
+            if h.dropped(args.on):
+                status = f"dropped {h.dropped_on}, held weeks {h.first_week}-{h.drop_week - 1}"
+            elif h.departed(args.on):
+                status = f"left office {h.left_office}"
+            elif h.made_on > args.on:
+                continue
+            else:
+                status = f"held from week {h.first_week}"
+            print(f"  {names.get(h.bioguide_id, h.bioguide_id):<28} {h.chamber} ${h.session_cost:>6,} "
+                  f"bought {h.made_on}  {p + q:>7.1f} pts ({p:.0f} power + {q:.0f} productivity)  {status}")
+        total = s["power"] + s["productivity"] - s["penalties"]
+        print(f"  total {total:.1f} = {s['power']:.1f} power + {s['productivity']:.1f} productivity"
+              f" - {s['penalties']:g} penalties")
+
+
+def cmd_league_standings(args) -> None:
+    with db.connect() as conn:
+        db.init_schema(conn)
+        league = _league(conn, args.league)
+        markets = _league_years(conn, league)
+        table = []
+        for roster in db.rosters(conn, args.league):
+            scored = _roster_points(conn, roster, markets, args.on)
+            power = sum(s["power"] for s in scored.values())
+            productivity = sum(s["productivity"] for s in scored.values())
+            penalties = sum(s["penalties"] for s in scored.values())
+            table.append((power + productivity - penalties, power, productivity, penalties, roster["player"]))
+    print(f"league {league['league_id']} ({league['name']}), as of {args.on}: "
+          + ", ".join(f"{m.year} {len(m.cal.settled(args.on))}/{len(m.cal.weeks)} weeks settled" for m in markets))
+    if league["settings"]["win_condition"] != "cumulative":
+        print(f"(win condition {league['settings']['win_condition']} isn't built yet; showing cumulative points)")
+    for rank, (total, power, productivity, penalties, player) in enumerate(sorted(table, reverse=True), 1):
+        print(f"  {rank:>2}. {player:<20} {total:>8.1f}  ({power:.0f} power + {productivity:.0f} productivity"
+              + (f" - {penalties:g} penalties" if penalties else "") + ")")
+
+
 def cmd_load(args) -> None:
     with db.connect() as conn:
         db.init_schema(conn)
@@ -387,6 +593,7 @@ def main() -> None:
     p = sub.add_parser("score", help="score a Congress with a ruleset")
     p.add_argument("--congress", type=int, default=118)
     p.add_argument("--ruleset", type=Path, default=DEFAULT_RULESET)
+    p.add_argument("--league", type=int, help="score with this league's frozen ruleset")
     p.set_defaults(func=cmd_score)
 
     p = sub.add_parser("report", help="balance and composition of a scoring run")
@@ -429,6 +636,37 @@ def main() -> None:
     q = league_sub.add_parser("show", help="show one league, or all")
     q.add_argument("league", type=int, nargs="?")
     q.set_defaults(func=cmd_league_show)
+    on = dict(type=date.fromisoformat, default=date.today(), help="the date it happens (default: today)")
+    year = dict(type=int, help="legislative year (default: the one under way on --on, or the league's first)")
+    q = league_sub.add_parser("join", help="give a player a roster in a league")
+    q.add_argument("league", type=int)
+    q.add_argument("player")
+    q.add_argument("--on", **on)
+    q.set_defaults(func=cmd_league_join)
+    q = league_sub.add_parser("buy", help="buy critters for a player's roster")
+    q.add_argument("league", type=int)
+    q.add_argument("player")
+    q.add_argument("critters", nargs="+", help="bioguide ids or parts of names")
+    q.add_argument("--year", **year)
+    q.add_argument("--on", **on)
+    q.set_defaults(func=cmd_league_buy)
+    q = league_sub.add_parser("drop", help="drop critters from a player's roster")
+    q.add_argument("league", type=int)
+    q.add_argument("player")
+    q.add_argument("critters", nargs="+", help="bioguide ids or parts of names")
+    q.add_argument("--year", **year)
+    q.add_argument("--on", **on)
+    q.set_defaults(func=cmd_league_drop)
+    q = league_sub.add_parser("roster", help="a player's critters, budget and points")
+    q.add_argument("league", type=int)
+    q.add_argument("player")
+    q.add_argument("--year", type=int, help="only this legislative year")
+    q.add_argument("--on", **{**on, "help": "as of this date (default: today)"})
+    q.set_defaults(func=cmd_league_roster)
+    q = league_sub.add_parser("standings", help="players ranked by points")
+    q.add_argument("league", type=int)
+    q.add_argument("--on", **{**on, "help": "as of this date (default: today)"})
+    q.set_defaults(func=cmd_league_standings)
 
     p = sub.add_parser("price", help="price critters for a session from a scoring run")
     p.add_argument("--run", type=int, help="run id (default: latest)")
