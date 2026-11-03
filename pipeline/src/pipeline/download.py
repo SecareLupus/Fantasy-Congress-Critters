@@ -13,6 +13,7 @@ GOVINFO_BILLSTATUS = "https://www.govinfo.gov/bulkdata/BILLSTATUS/{congress}/{bi
 HOUSE_ROLL_CALL = "https://clerk.house.gov/evs/{year}/roll{roll:03d}.xml"
 VOTEVIEW = "https://voteview.com/static/data/out/{kind}/S{congress}_{kind}.csv"
 VOTEVIEW_KINDS = ["rollcalls", "votes", "members"]
+FEC_SUMMARY = "https://www.fec.gov/files/bulk-downloads/{cycle}/weball{yy}.zip"
 LEGISLATORS = "https://raw.githubusercontent.com/unitedstates/congress-legislators/{ref}/{name}"
 LEGISLATORS_COMMITS = (
     "https://api.github.com/repos/unitedstates/congress-legislators/commits"
@@ -150,3 +151,21 @@ def download_senate_votes(congress: int, force: bool = False) -> list[Path]:
         print(f"{'fetched' if fetched else 'cached '} {dest.relative_to(RAW_DIR)}")
         paths.append(dest)
     return paths
+
+
+def fec_summary_path(cycle: int) -> Path:
+    return RAW_DIR / "fec" / f"weball{cycle % 100:02d}.zip"
+
+
+def download_fec_summary(cycle: int, force: bool = False) -> Path:
+    """FEC all-candidates summary: total receipts per candidate for a two-year cycle."""
+    dest = fec_summary_path(cycle)
+    fetched = _fetch(FEC_SUMMARY.format(cycle=cycle, yy=f"{cycle % 100:02d}"), dest, force)
+    print(f"{'fetched' if fetched else 'cached '} {dest.relative_to(RAW_DIR)}")
+    return dest
+
+
+def pricing_cycle(congress: int, session: int) -> int:
+    """The last FEC cycle complete when the session opens."""
+    year = session_year(congress, session)
+    return year - 1 if (year - 1) % 2 == 0 else year - 2

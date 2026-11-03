@@ -276,3 +276,61 @@ def delegates(conn: psycopg.Connection) -> frozenset[str]:
     return frozenset(row[0] for row in conn.execute(
         "SELECT DISTINCT bioguide_id FROM critter_terms WHERE term_type = 'rep' AND state = ANY(%s)",
         (list(NON_VOTING_STATES),)))
+
+
+def pricing_inputs(conn: psycopg.Connection, run_id: int, session: int, min_days: int) -> list[dict]:
+    """Members seated on the first day of `session`, with what pricing needs from the run:
+    seats held that day, and last session's participation and productivity rate."""
+    if session < 2:
+        raise ValueError("pricing needs the previous session in the same run; price session 2")
+    return [dict(zip(("bioguide_id", "chamber", "up_for_election", "fec_ids", "seat_value",
+                      "participation", "productivity_rate", "left_office"), row))
+            for row in conn.execute("""
+        WITH r AS (SELECT congress FROM score_runs WHERE run_id = %(run)s),
+        s AS (SELECT make_date(congress * 2 + 1787 + %(s)s - 1, 1, 3) AS a,
+                     make_date(congress * 2 + 1787 + %(s)s, 1, 3) AS b,
+                     make_date(congress * 2 + 1787 + %(s)s - 2, 1, 3) AS pa FROM r),
+        seated AS (
+            SELECT DISTINCT ON (t.bioguide_id) t.bioguide_id, t.term_type, t.end_date
+            FROM critter_terms t, s WHERE t.start_date <= s.a AND t.end_date > s.a
+            ORDER BY t.bioguide_id, t.start_date DESC),
+        served AS (
+            SELECT t.bioguide_id, sum(least(t.end_date, s.a) - greatest(t.start_date, s.pa)) AS days
+            FROM critter_terms t, s WHERE t.start_date < s.a AND t.end_date > s.pa GROUP BY 1),
+        seats AS (
+            SELECT bioguide_id, sum((detail->>'value')::float) AS value
+            FROM score_items, s WHERE run_id = %(run)s AND session = %(s)s AND pillar = 'power'
+              AND item_date = s.a GROUP BY 1),
+        prev AS (
+            SELECT bioguide_id,
+                   sum((detail->>'participation')::float * (detail->>'days')::float)
+                       / nullif(sum((detail->>'days')::float), 0) AS participation,
+                   sum(points) FILTER (WHERE pillar = 'productivity') AS productivity
+            FROM score_items WHERE run_id = %(run)s AND session = %(s)s - 1 GROUP BY 1)
+        SELECT x.bioguide_id, CASE x.term_type WHEN 'sen' THEN 'sen' ELSE 'rep' END,
+               x.end_date <= s.b, c.fec_ids, coalesce(seats.value, 0), prev.participation,
+               CASE WHEN served.days >= %(min)s
+                    THEN coalesce(prev.productivity, 0) * (s.a - s.pa) / served.days END,
+               (SELECT max(end_date) FROM critter_terms t WHERE t.bioguide_id = x.bioguide_id)
+        FROM seated x CROSS JOIN s JOIN critters c USING (bioguide_id)
+        LEFT JOIN seats USING (bioguide_id) LEFT JOIN served USING (bioguide_id)
+        LEFT JOIN prev USING (bioguide_id)""", {"run": run_id, "s": session, "min": min_days})]
+
+
+def session_points(conn: psycopg.Connection, run_id: int, session: int) -> dict[str, float]:
+    return dict(conn.execute(
+        "SELECT bioguide_id, sum(points) FROM score_items WHERE run_id = %s AND session = %s GROUP BY 1",
+        (run_id, session)).fetchall())
+
+
+def save_prices(conn: psycopg.Connection, run_id: int, session: int, fec_cycle: int, prices) -> None:
+    conn.execute("DELETE FROM critter_prices WHERE run_id = %s AND session = %s", (run_id, session))
+    with conn.cursor().copy(
+        """COPY critter_prices (run_id, session, fec_cycle, bioguide_id, chamber, projected_power,
+               projected_productivity, multiplier, session_cost, signing_fee, weekly_fee) FROM STDIN"""
+    ) as copy:
+        for p in prices:
+            copy.write_row((run_id, session, fec_cycle, p.bioguide_id, p.chamber, p.projected_power,
+                            p.projected_productivity, p.multiplier, p.session_cost, p.signing_fee,
+                            p.weekly_fee))
+    conn.commit()

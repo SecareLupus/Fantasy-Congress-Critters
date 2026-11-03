@@ -314,3 +314,27 @@ default = 40
 committee_source = "floor"
 # Holders of these titles are not expected to vote; their positions are not multiplied.
 exempt_titles = ["Speaker of the House"]
+
+# Session Cost = projected points × price_per_point × market multiplier (Design-Economy §5.2).
+[pricing]
+# $14 a point puts the median critter at $5,000 a session: two median backers' worth
+# (the median committee gave a member it backed $2,500 a year in 2023-24).
+price_per_point = 14
+round_to = 10
+# Last session's productivity per full year is pulled this far toward the chamber median
+# (0.7 keeps 70% of the difference). Members who served fewer than min_days_served days
+# last session get the chamber median.
+productivity_shrink = 0.7
+min_days_served = 60
+# Donations: -band .. +band by percentile of FEC cycle receipts, ranked within chamber and
+# election status. Up for re-election: a flat premium. The product is clamped.
+donations_band = 0.15
+reelection_premium = 0.05
+multiplier_min = 0.75
+multiplier_max = 1.25
+# Paid at purchase and never refunded; the rest is charged weekly over the session.
+signing_fee_share = 0.25
+weeks = 52
+
+[league]  # Standard league settings (Design-Rulesets §6A.7)
+budget = 50000  # per legislative year, about 8 x the 75th-percentile Session Cost

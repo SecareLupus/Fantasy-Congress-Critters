@@ -1,9 +1,11 @@
 import argparse
 import time
+from datetime import date
+from statistics import correlation, quantiles
 
 from pathlib import Path
 
-from . import db, download, legislators, rosters, scoring
+from . import db, download, fec, legislators, pricing, rosters, scoring
 from .billstatus import iter_zip
 from .config import BILL_TYPES
 from .normalize import normalize_bill
@@ -16,6 +18,7 @@ def cmd_download(args) -> None:
     download.download_roster_history(args.congress, force=args.force)
     download.download_house_votes(args.congress, force=args.force)
     download.download_senate_votes(args.congress, force=args.force)
+    download.download_fec_summary(download.pricing_cycle(args.congress, 2), force=args.force)
 
 
 # Committee code prefix -> the term types whose dates bound a seat on it.
@@ -138,6 +141,66 @@ def cmd_report(args) -> None:
         print(f"  {session} {name:<28} {chamber} {power:>7.0f} {productivity:>7.0f}")
 
 
+def cmd_price(args) -> None:
+    with db.connect() as conn:
+        db.init_schema(conn)
+        run_id = args.run or conn.execute("SELECT max(run_id) FROM score_runs").fetchone()[0]
+        congress = conn.execute("SELECT congress FROM score_runs WHERE run_id = %s", (run_id,)).fetchone()[0]
+        ruleset = scoring.Ruleset.load(args.ruleset)
+        cfg = ruleset.raw["pricing"]
+        cycle = args.fec_cycle or download.pricing_cycle(congress, args.session)
+        path = download.fec_summary_path(cycle)
+        if not path.exists():
+            raise SystemExit(f"missing {path}: run critters download (or pass --fec-cycle)")
+        receipts = fec.receipts(path)
+        rows = db.pricing_inputs(conn, run_id, args.session, cfg["min_days_served"])
+        members = []
+        for r in rows:
+            found = [receipts[i] for i in r["fec_ids"] if i in receipts]
+            members.append(pricing.Member(r["bioguide_id"], r["chamber"], r["seat_value"], r["participation"],
+                                          r["productivity_rate"], sum(found) if found else None,
+                                          r["up_for_election"]))
+        prices = pricing.price_session(members, cfg)
+        db.save_prices(conn, run_id, args.session, cycle, prices)
+        actual = db.session_points(conn, run_id, args.session)
+        names = dict(conn.execute("SELECT bioguide_id, official_full_name FROM critters").fetchall())
+
+    start = date(download.session_year(congress, args.session), 1, 3)
+    end = date(start.year + 1, 1, 3)
+    left = {r["bioguide_id"]: r["left_office"] for r in rows}
+    costs = sorted(p.session_cost for p in prices)
+    q1, q2, q3 = quantiles(costs, n=4)
+    print(f"run {run_id}: {congress}th Congress session {args.session} ({start.year}), "
+          f"ruleset {ruleset.version}, FEC cycle {cycle}")
+    print(f"{len(prices)} critters seated on {start}: "
+          + ", ".join(f"{c} {sum(p.chamber == c for p in prices)}" for c in ("rep", "sen")))
+    print(f"Session Cost: min ${costs[0]:,}  25% ${q1:,.0f}  median ${q2:,.0f}  75% ${q3:,.0f}  max ${costs[-1]:,}")
+    budget = ruleset.raw.get("league", {}).get("budget")
+    if budget:
+        print(f"budget ${budget:,} = {budget / q3:.1f} x the 75th percentile")
+
+    scored = [p for p in prices if actual.get(p.bioguide_id)]
+    if scored:
+        r = correlation([p.session_cost for p in scored], [actual[p.bioguide_id] for p in scored])
+        print(f"\nagainst session {args.session} points: r = {r:.3f} (price), "
+              f"{correlation([p.projected_points for p in scored], [actual[p.bioguide_id] for p in scored]):.3f} (projection)")
+
+        def value(p) -> float:
+            weeks = min(cfg["weeks"], max(0, (min(left[p.bioguide_id], end) - start).days / 7))
+            return actual[p.bioguide_id] / pricing.charged(p, weeks) * 1000
+
+        ranked = sorted(scored, key=value, reverse=True)
+        for label, group in (("best value", ranked[:args.top]), ("worst value", ranked[::-1][:args.top])):
+            print(f"\n{label} (points per $1,000 charged)")
+            for p in group:
+                print(f"  {names[p.bioguide_id]:<28} {p.chamber} ${p.session_cost:>6,} "
+                      f"{actual[p.bioguide_id]:>6.0f} pts {value(p):>6.1f}")
+    print(f"\nmost expensive")
+    for p in sorted(prices, key=lambda p: -p.session_cost)[:args.top]:
+        print(f"  {names[p.bioguide_id]:<28} {p.chamber} ${p.session_cost:>6,}  projected {p.projected_power:>4.0f} power "
+              f"+ {p.projected_productivity:>4.0f} productivity, x{p.multiplier:.2f}")
+
+
 def cmd_load(args) -> None:
     with db.connect() as conn:
         db.init_schema(conn)
@@ -195,6 +258,15 @@ def main() -> None:
     p = sub.add_parser("report", help="balance and composition of a scoring run")
     p.add_argument("--run", type=int, help="run id (default: latest)")
     p.set_defaults(func=cmd_report)
+
+    p = sub.add_parser("price", help="price critters for a session from a scoring run")
+    p.add_argument("--run", type=int, help="run id (default: latest)")
+    p.add_argument("--session", type=int, default=2, help="session to price (needs the one before it)")
+    p.add_argument("--fec-cycle", type=int, help="FEC cycle for donations (default: last one complete "
+                                                  "when the session opens)")
+    p.add_argument("--ruleset", type=Path, default=DEFAULT_RULESET, help="ruleset with the pricing constants")
+    p.add_argument("--top", type=int, default=8)
+    p.set_defaults(func=cmd_price)
 
     args = parser.parse_args()
     args.func(args)

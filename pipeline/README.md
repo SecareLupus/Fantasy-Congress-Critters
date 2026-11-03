@@ -18,6 +18,7 @@ uv run critters download --congress 118
 uv run critters load --congress 118
 uv run critters score --congress 118   # score with rulesets/default.toml
 uv run critters report                 # balance and composition of the latest run
+uv run critters price                  # Session Costs for session 2 from the latest run
 uv run pytest
 ```
 
@@ -32,6 +33,7 @@ Raw files land in `data/raw/` (gitignored). `load` is idempotent: each bill and 
 | Committee rosters over time | Every commit of `committee-membership-current.yaml` in `congress-legislators` during the Congress |
 | House roll-call votes | House Clerk XML, one file per roll call (`clerk.house.gov/evs/{year}/roll{NNN}.xml`) |
 | Senate roll-call votes | Voteview CSVs (`voteview.com/static/data/out/{rollcalls,votes,members}/S{congress}_*.csv`); senate.gov blocks automated downloads |
+| Candidate receipts (pricing) | FEC all-candidates summary (`fec.gov/files/bulk-downloads/{cycle}/weball{yy}.zip`), the last cycle complete when the session opens |
 
 ## Tables
 
@@ -43,11 +45,16 @@ Raw files land in `data/raw/` (gitignored). `load` is idempotent: each bill and 
 - `roll_call_actions` (view): bill and amendment actions that cite a roll call, from BILLSTATUS, for "what did this vote do".
 - `critter_leadership`: chamber and party leadership posts (Speaker, floor leaders, whips, conference posts).
 - `score_runs`, `score_items`: one run per scoring of a Congress with a ruleset, and one item per point-earning fact: an event credit, a vote, or a position held in a session. Each item records its pillar (power or productivity), category, date, source (bill, amendment, vote, or committee), and the factors behind its points.
+- `critter_prices`: Session Costs priced from a scoring run: projected power and productivity, market multiplier, signing fee and weekly fee per critter.
 - `critters`, `critter_terms`, `committees`: reference data.
 
 ## Scoring
 
 `critters score` runs the engine in `scoring.py` against a ruleset (default `rulesets/default.toml`) and saves a run. Every constant lives in the ruleset; Design-Scoring §10 lists how v0.1 interprets the open rules. `critters report` prints the median power and productivity of members seated for a whole session, the productivity scale that would make the median member even, the Senate power and productivity factors that would match the median House member, the point composition by category, and the top ten critters per session.
+
+## Pricing
+
+`critters price` prices the critters seated on a session's first day (Design-Economy §5.2) from a scoring run, using the `[pricing]` constants in the ruleset. Projected power is the value of the seats held that day times last session's participation; projected productivity is last session's productivity per full year, pulled toward the chamber median. Donations use the last FEC cycle complete when the session opens, so a backtest uses only what was known on day one. It needs the session before it in the same run, so for a single Congress it prices session 2. It saves `critter_prices` and prints the price spread, the budget against the 75th percentile, and, when the run has that session's scores, how well price tracked points and the best and worst value.
 
 ## Normalization notes
 
