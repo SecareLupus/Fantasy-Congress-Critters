@@ -1,8 +1,10 @@
 """Fetch raw source files into data/raw. Files already on disk are skipped unless force=True."""
 
+import json
 import shutil
 import time
 import urllib.request
+from datetime import date, datetime
 from pathlib import Path
 
 from .config import BILL_TYPES, RAW_DIR
@@ -11,7 +13,11 @@ GOVINFO_BILLSTATUS = "https://www.govinfo.gov/bulkdata/BILLSTATUS/{congress}/{bi
 HOUSE_ROLL_CALL = "https://clerk.house.gov/evs/{year}/roll{roll:03d}.xml"
 VOTEVIEW = "https://voteview.com/static/data/out/{kind}/S{congress}_{kind}.csv"
 VOTEVIEW_KINDS = ["rollcalls", "votes", "members"]
-LEGISLATORS = "https://raw.githubusercontent.com/unitedstates/congress-legislators/main/{name}"
+LEGISLATORS = "https://raw.githubusercontent.com/unitedstates/congress-legislators/{ref}/{name}"
+LEGISLATORS_COMMITS = (
+    "https://api.github.com/repos/unitedstates/congress-legislators/commits"
+    "?path={name}&since={since}&until={until}&per_page=100"
+)
 LEGISLATOR_FILES = [
     "legislators-current.yaml",
     "legislators-historical.yaml",
@@ -56,7 +62,7 @@ def download_legislators(force: bool = False) -> list[Path]:
     paths = []
     for name in LEGISLATOR_FILES:
         dest = legislators_path(name)
-        fetched = _fetch(LEGISLATORS.format(name=name), dest, force)
+        fetched = _fetch(LEGISLATORS.format(ref="main", name=name), dest, force)
         print(f"{'fetched' if fetched else 'cached '} {dest.relative_to(RAW_DIR)}")
         paths.append(dest)
     return paths
@@ -64,6 +70,38 @@ def download_legislators(force: bool = False) -> list[Path]:
 
 def session_year(congress: int, session: int) -> int:
     return 1787 + 2 * congress + (session - 1)
+
+
+def congress_dates(congress: int) -> tuple[date, date]:
+    """A Congress runs from noon on January 3 to noon on January 3 two years later."""
+    start = session_year(congress, 1)
+    return date(start, 1, 3), date(start + 2, 1, 3)
+
+
+def roster_history_dir(congress: int) -> Path:
+    return RAW_DIR / "legislators" / "committee-membership-history" / str(congress)
+
+
+def download_roster_history(congress: int, force: bool = False) -> list[Path]:
+    """Every version of committee-membership-current.yaml committed during the Congress.
+
+    Each file is named for its commit time (when the change reached the main branch),
+    which is the date the roster builder treats it as observed.
+    """
+    start, end = congress_dates(congress)
+    name = "committee-membership-current.yaml"
+    url = LEGISLATORS_COMMITS.format(name=name, since=f"{start}T00:00:00Z", until=f"{end}T00:00:00Z")
+    req = urllib.request.Request(url, headers={"User-Agent": "critters-pipeline"})
+    with urllib.request.urlopen(req, timeout=60) as resp:
+        commits = json.load(resp)
+    paths = []
+    for commit in commits:
+        committed = datetime.fromisoformat(commit["commit"]["committer"]["date"])
+        dest = roster_history_dir(congress) / f"{committed:%Y%m%dT%H%M%S}_{commit['sha'][:10]}.yaml"
+        _fetch(LEGISLATORS.format(ref=commit["sha"], name=name), dest, force)
+        paths.append(dest)
+    print(f"roster history {congress}: {len(paths)} snapshots")
+    return sorted(paths)
 
 
 def house_votes_dir(congress: int, session: int) -> Path:

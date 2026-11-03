@@ -7,6 +7,7 @@ from psycopg.types.json import Jsonb
 from .billstatus import Bill
 from .config import DATABASE_URL
 from .normalize import Event
+from .rosters import Membership
 from .votes import RollCall
 
 
@@ -83,3 +84,42 @@ def save_roll_call(conn: psycopg.Connection, rc: RollCall) -> None:
             [(rc.vote_id, m.bioguide_id, m.position, m.raw_position, m.party, m.state)
              for m in rc.members],
         )
+
+
+def save_memberships(conn: psycopg.Connection, congress: int, memberships: Iterable[Membership]) -> None:
+    """Replace a Congress's committee memberships."""
+    with conn.cursor() as cur:
+        cur.execute("DELETE FROM committee_memberships WHERE congress = %s", (congress,))
+        cur.executemany(
+            """INSERT INTO committee_memberships (congress, committee_code, bioguide_id, side, role,
+                   title, start_date, end_date, first_seen, last_seen)
+               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
+            [(congress, m.seat.committee_code, m.seat.bioguide_id, m.seat.side, m.seat.role,
+              m.seat.title, m.start_date, m.end_date, m.first_seen, m.last_seen)
+             for m in memberships],
+        )
+
+
+def chamber_terms(conn: psycopg.Connection) -> dict[tuple[str, str], list]:
+    """(bioguide_id, term_type) -> [(start, end)], end inclusive."""
+    terms: dict[tuple[str, str], list] = {}
+    for bioguide, term_type, start, end in conn.execute(
+        "SELECT bioguide_id, term_type, start_date, end_date FROM critter_terms ORDER BY start_date"
+    ):
+        terms.setdefault((bioguide, term_type), []).append((start, end))
+    return terms
+
+
+def add_missing_committees(conn: psycopg.Connection) -> int:
+    """Committees named in bill activity but absent from the reference data, e.g. hsha06."""
+    cur = conn.execute(
+        """INSERT INTO committees (committee_code, parent_committee_code, name, chamber, is_current)
+           SELECT DISTINCT ON (committee_code) committee_code, parent_committee_code,
+                  committee_name, lower(chamber), false
+           FROM bill_committee_activities
+           WHERE committee_code NOT IN (SELECT committee_code FROM committees)
+           ORDER BY committee_code
+           ON CONFLICT DO NOTHING"""
+    )
+    conn.commit()
+    return cur.rowcount
