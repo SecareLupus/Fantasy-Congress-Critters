@@ -340,6 +340,3 @@ multiplier_max = 1.25
 # Paid at purchase and never refunded; the rest is charged weekly over the session.
 signing_fee_share = 0.25
 weeks = 52
-
-[league]  # Standard league settings (Design-Rulesets §6A.7)
-budget = 50000  # per legislative year, about 8 x the 75th-percentile Session Cost

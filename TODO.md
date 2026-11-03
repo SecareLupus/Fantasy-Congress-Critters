@@ -19,7 +19,9 @@
 - Add concrete normalization mappings for action text parsing, including edge cases,
 - Specify ruleset versioning and governance (approval, freezing, deprecation)
 - Define multi-ownership discount schedule and guardrails (deferred; flat price at launch)
-- Set Standard league settings: roster size/slots, win condition (starting budget $50,000 and drop cost = signing fee are set)
+- [x] League settings as a per-league entity set by game masters, with GameMaker presets (Design-Rulesets §6A.7)
+- Head-to-head matchups: scheduling and weekly scoring for leagues that choose them
+- Rosters, purchases, drops and standings within a league
 - [x] Decide who scores bill committee and floor scheduling actions (sponsor/co-sponsors only)
 - [x] Set authorship stage cutoffs
 

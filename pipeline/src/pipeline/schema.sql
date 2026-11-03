@@ -282,3 +282,33 @@ CREATE TABLE IF NOT EXISTS critter_prices (
     weekly_fee             double precision NOT NULL,
     PRIMARY KEY (run_id, session, bioguide_id)
 );
+
+-- League settings presets, authored by GameMakers (e.g. "standard").
+CREATE TABLE IF NOT EXISTS league_presets (
+    name        text PRIMARY KEY,
+    description text,
+    settings    jsonb NOT NULL,
+    authored_by text NOT NULL,
+    updated_at  timestamptz NOT NULL DEFAULT now()
+);
+
+-- Leagues (Design-Rulesets §6A). settings are resolved from a preset plus the game
+-- master's overrides when the league is created, so later preset edits don't reach it.
+-- The league freezes a copy of its ruleset; neither changes once the league starts.
+CREATE TABLE IF NOT EXISTS leagues (
+    league_id       bigserial PRIMARY KEY,
+    name            text NOT NULL,
+    league_type     text NOT NULL,
+    visibility      text NOT NULL CHECK (visibility IN ('official', 'private')),
+    start_date      date NOT NULL,
+    end_date        date NOT NULL,  -- exclusive
+    ruleset_version text NOT NULL,
+    ruleset         jsonb NOT NULL,
+    preset          text REFERENCES league_presets,
+    settings        jsonb NOT NULL,
+    created_by      text NOT NULL,
+    creator_role    text NOT NULL CHECK (creator_role IN ('gamemaker', 'commissioner')),
+    created_at      timestamptz NOT NULL DEFAULT now(),
+    updated_at      timestamptz NOT NULL DEFAULT now(),
+    CHECK (start_date < end_date)
+);

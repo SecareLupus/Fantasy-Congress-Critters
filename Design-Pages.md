@@ -383,10 +383,12 @@ This section enumerates the core pages required by the game, independent of UI l
 * `league.session_ids[]` (array of strings; leagues may span several sessions)
 * `league.ruleset.id` (string)
 * `league.ruleset.version` (string)
-* `league.config.budget_rules` (object: annual_budget, caps, rollover_policy)
-* `league.config.roster_rules` (object: roster_limit, chamber_slots, ownership_limits)
+* `league.config.budget_rules` (object: annual_budget; caps and rollover_policy to come)
+* `league.config.roster_rules` (object: roster_limit, chamber_slots {house, senate} or null; ownership_limits to come)
 * `league.config.win_condition` (enum: cumulative, head_to_head)
-* `league.config.drop_cost` (object: type [forfeit_reservation, budget_fee, points_deduction], amount)
+* `league.config.drop_cost` (object: extra_fee, points_penalty; on top of the signing fee, which is always lost)
+* `league.preset` (string: the preset the settings started from)
+* `league.created_by` (object: game master and role [gamemaker, commissioner])
 * `league.participants[]` (array of objects: player_id, display_name, joined_at)
 * `league.standings[]` (array of objects: player_id, points, rank)
 * `league.budgets[]` (array of objects: player_id, available, committed)
@@ -409,6 +411,8 @@ This section enumerates the core pages required by the game, independent of UI l
 * `league.config.roster_rules` -> `LEAGUE.ROSTER_RULES`
 * `league.config.win_condition` -> `LEAGUE.WIN_CONDITION`
 * `league.config.drop_cost` -> `LEAGUE.DROP_COST`
+* `league.preset` -> `LEAGUE.PRESET`
+* `league.created_by` -> `LEAGUE.GAME_MASTER`
 * `league.participants[]` -> `LEAGUE.PARTICIPANT`
 * `league.standings[]` -> `LEAGUE.STANDINGS`
 * `league.budgets[]` -> `LEAGUE.BUDGET_STATE`
