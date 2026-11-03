@@ -4,7 +4,7 @@ import pytest
 
 from pipeline.cli import DEFAULT_RULESET
 from pipeline.download import pricing_cycle
-from pipeline.pricing import Member, charged, fees, market_multiplier, percentiles, price_session, session_cost
+from pipeline.pricing import HeldSeat, Member, carried_seats, charged, fees, market_multiplier, percentiles, price_session, session_cost
 from pipeline.scoring import Ruleset
 
 CFG = Ruleset.load(DEFAULT_RULESET).raw["pricing"]
@@ -98,3 +98,34 @@ def test_pricing_cycle_is_the_last_one_complete_at_session_start():
 def test_ruleset_prices_the_median_critter_near_5000():
     cfg = deepcopy(CFG)
     assert session_cost(357, 1.0, cfg) == pytest.approx(5000, abs=cfg["round_to"])
+
+
+POSITIONS = Ruleset.load(DEFAULT_RULESET).raw["positions"]
+
+
+def test_returning_members_carry_their_seats_and_newcomers_get_the_freshman_median():
+    held = [HeldSeat("VET", "rep", "COMMITTEE_SEAT", "member", 70.0),
+            HeldSeat("VET", "rep", "SUBCOMMITTEE_SEAT", "member", 7.0),
+            HeldSeat("FROSH1", "rep", "COMMITTEE_SEAT", "member", 40.0),
+            HeldSeat("FROSH2", "rep", "COMMITTEE_SEAT", "member", 100.0),
+            HeldSeat("MOVER", "rep", "COMMITTEE_SEAT", "chair", 300.0)]
+    before = {"VET": "rep", "FROSH1": "rep", "FROSH2": "rep", "MOVER": "rep", "NOSEATS": "rep"}
+    now = {"VET": "rep", "NOSEATS": "rep", "NEW": "rep", "MOVER": "sen"}
+    out = carried_seats(held, set(), {"FROSH1", "FROSH2"}, POSITIONS, now, before)
+    assert out["VET"] == pytest.approx(77.0)
+    assert out["NOSEATS"] == 0.0  # returning without committee seats
+    assert out["NEW"] == pytest.approx(70.0)  # median of last Congress's House freshmen
+    assert out["MOVER"] == 0.0  # new to the Senate: no Senate freshmen on record here
+
+
+def test_a_majority_change_swaps_chairs_and_ranking_members():
+    held = [HeldSeat("CHAIR", "sen", "COMMITTEE_SEAT", "chair", 129.0),
+            HeldSeat("RANK", "sen", "COMMITTEE_SEAT", "ranking_member", 86.0),
+            HeldSeat("SUBCHAIR", "sen", "SUBCOMMITTEE_SEAT", "chair", 21.5),
+            HeldSeat("HOUSE", "rep", "COMMITTEE_SEAT", "chair", 300.0)]
+    seated = {b: c for b, c in [("CHAIR", "sen"), ("RANK", "sen"), ("SUBCHAIR", "sen"), ("HOUSE", "rep")]}
+    out = carried_seats(held, {"sen"}, set(), POSITIONS, seated, seated)
+    assert out["CHAIR"] == pytest.approx(86.0)
+    assert out["RANK"] == pytest.approx(129.0)
+    assert out["SUBCHAIR"] == pytest.approx(21.5 / 0.5 * 0.25)
+    assert out["HOUSE"] == pytest.approx(300.0)  # the House majority held

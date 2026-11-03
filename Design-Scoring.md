@@ -976,17 +976,19 @@ The scoring engine (`pipeline/src/pipeline/scoring.py`) reads every constant fro
 
 **Votes**
 
-* Each yea, nay or present vote scores for a member seated that day. A vote is worth a session's full-attendance value divided by the chamber's expected roll calls (620 House, 345 Senate, the 118th's averages), so perfect attendance is worth the same in both chambers, about 30 points a session, although the House holds about twice as many roll calls. Votes are about a fifth of the median member's productivity (21% House, 18% Senate in 2023). In a year with more or fewer roll calls than expected, full attendance is worth proportionally more or less.
-* Delegates and the Resident Commissioner vote only in the Committee of the Whole, so their votes are valued against those roll calls (270 expected a session; 394 in 2023, 144 in 2024). Perfect attendance is worth the same to them as to any member. Otherwise they score as House members.
+* Votes settle weekly. A session has 52 settlement weeks from its first day (the last runs to the session's end). Each week is worth 1/52 of a session's full-attendance value, paid by the share of that week's roll calls the member cast (yea, nay or present) out of those they were recorded on, and prorated by the days they were seated. A week without roll calls counts at the member's session-to-date rate (full before their first roll call). Perfect attendance is worth the same every session in either chamber, about 30 points, however many roll calls are held, and each week's points are final when the week ends.
+* Why weekly: roll-call counts swing between sessions. The House held 724 in 2023 but 362 in 2025; the Senate 352 in 2023 but 659 in 2025, mostly on nominations. Valuing each vote against a fixed expected count (the first v0.1 rule) halved House members' vote points in 2025 and nearly doubled senators'. Valuing each vote against the roll calls actually held would fix the total, but no score would be final until the session ended.
+* Delegates and the Resident Commissioner are recorded only on Committee of the Whole roll calls, so their weekly share counts those. Perfect attendance is worth the same to them as to any member. Otherwise they score as House members.
+* Votes are about a fifth of the median member's productivity.
 * Voting yea on a nomination that is confirmed adds `{PTS_CONFIRM_SUCCESS}`. `{PTS_CONFIRM_VOTE}` is 0.
 
 **Power**
 
 * Committee seats: tier base × role. Ex officio seats score nothing (they're courtesy seats, mostly held by leaders scored elsewhere).
 * Subcommittee seats add a bonus on the parent committee's tier base: member +10%, chair +50%, ranking member +25% (the last isn't in the design).
-* Select committees formed at the session start are tiered: the China select committee and the Weaponization and Coronavirus select subcommittees at Tier 2; the Helsinki Commission and the Senate narcotics caucus at Tier 4. Ad hoc task forces are a flat 30.
+* Select committees formed at the session start are tiered: the China select committee, the Weaponization and Coronavirus select subcommittees (118th) and the January 6 select subcommittee (119th) at Tier 2; the Helsinki Commission and the Senate narcotics caucus at Tier 4. Ad hoc task forces are a flat 30.
 * Leadership posts, per session: Speaker 400; floor leaders 300; whips 200; party conference or caucus chairs, President pro tempore and assistant leaders 100; other elected posts 40.
-* Participation: committee seats use floor participation until committee votes are loaded. The Speaker, who by custom rarely votes, is exempt.
+* Participation: committee seats use floor participation until committee votes are loaded. It settles weekly like votes: a seat's points for a week are its value for the days held that week times the member's participation that week. The Speaker, who by custom rarely votes, is exempt.
 * Chamber factors: senators' positional points are multiplied by 0.43 and their productivity other than votes by 0.58, so the median senator matches the median House member on both pillars. Senators hold about twice as many seats (median 4 committees and 9 subcommittees, against 2 and 4) and do more non-vote legislating per head (median 165 against 101 in 2023). Without the factors the median senator had 386 power against 165, and senators took the whole top 10. The cost is that a senator's bill events score 58% of the same event for a House member.
 
 **Weights and caps**
@@ -996,13 +998,16 @@ The scoring engine (`pipeline/src/pipeline/scoring.py`) reads every constant fro
 * Per-critter session caps near the 118th's 95th percentile: 50 introductions, 400 co-sponsorships, 40 amendments offered. Items beyond a cap stay in the ledger at zero.
 * One productivity scale multiplies every productivity item. It is set so the median full-session member earns about as much from productivity as from power (0.13 for the 118th).
 
-**Balance (118th backtest).** Medians for members seated all year, power / productivity: House 165 / 166 in 2023 and 174 / 164 in 2024; Senate 166 / 158 and 171 / 169. Senators hold 1 of the top 10 and 5 of the top 100 in 2023 (2 and 12 in 2024), below their 18% share of members: the House's 435 members produce a longer tail of high scorers.
+**Balance (118th backtest).** Medians for members seated all year, power / productivity: House 166 / 161 in 2023 and 173 / 168 in 2024; Senate 163 / 158 and 172 / 169. Senators hold 1 of the top 10 and 6 of the top 100 in 2023 (2 and 11 in 2024), below their 18% share of members: the House's 435 members produce a longer tail of high scorers.
+
+**Out of sample (119th Congress, 2025).** With every constant fitted on the 118th: House 157 / 142, Senate 172 / 182. Votes are level (median about 29 points in each chamber); the productivity gap is real activity. The House held fewer floor votes and rules in 2025 (median non-vote productivity 114, against 131 in 2023), while the Senate confirmed more nominees and passed more (152, against 129). House power is lower partly because the 119th roster data starts late: full committees on Jan 21 and most subcommittees on April 4 (Design-Data §10.1). Fixed chamber factors don't track a session in which one chamber is busier than the other; whether they should is open (§11).
 
 ---
 
 ## 11. Open Design Questions (For Next Iteration)
 
 * Committee vote data: House committee votes exist only as per-committee PDFs, about half of them scans (Design-Data §10.1), and Senate committees don't publish recorded votes consistently. Committee seats use floor participation until a structured source appears.
+* Chamber balance across sessions: the chamber factors are fixed per ruleset, fitted on the 118th. In 2025 the median senator out-earned the median House member on productivity (182 to 142) because the Senate was busier. Options: accept it as real variation, refit each Congress, or scale each session's productivity to keep medians level.
 * Amendment vs standalone bill weighting
 * Handling multi-year bills
 * Scoring vetoes and executive interaction

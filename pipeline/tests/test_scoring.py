@@ -1,5 +1,5 @@
 from copy import deepcopy
-from datetime import date
+from datetime import date, timedelta
 
 import pytest
 
@@ -199,39 +199,51 @@ def vote(position, question="On Passage", result="Passed", who="X", day=D(2023, 
     return VoteRow(vote_id, day, question, result, None, who, position)
 
 
-def test_votes_score_when_cast_by_a_seated_member(ruleset):
-    votes = [vote("yea"), vote("present"), vote("not_voting"), vote("nay", who="DEPARTED")]
-    items = score_votes(votes, ruleset, SESSIONS, lambda who, day: who != "DEPARTED")
-    assert [i.category for i in items] == ["VOTE_CAST", "VOTE_CAST"]
+def weekly_votes(items):
+    return [i for i in items if i.category == "VOTE_CAST"]
 
 
-def test_perfect_attendance_is_worth_the_same_in_both_chambers(ruleset):
+def test_perfect_attendance_is_worth_full_attendance_whatever_the_roll_call_count(ruleset):
     rules = ruleset.raw["votes"]
-    [house] = score_votes([vote("yea", vote_id="118-h1-1")], ruleset, SESSIONS, lambda *_: True)
-    [senate] = score_votes([vote("yea", vote_id="118-s1-1")], ruleset, SESSIONS, lambda *_: True)
-    assert house.points * rules["expected_roll_calls"]["rep"] == pytest.approx(rules["full_attendance"])
-    assert senate.points * rules["expected_roll_calls"]["sen"] == pytest.approx(rules["full_attendance"])
+    busy = [vote("yea", day=D(2023, 1, 3) + timedelta(d), vote_id=f"118-s1-{d}") for d in range(365)]
+    light = [vote("yea", day=D(2023, 5, 1), vote_id="118-h1-1")]
+    for votes in (busy, light):
+        total = sum(i.points for i in weekly_votes(score_votes(votes, ruleset, SESSIONS[:1], lambda *_: True)))
+        assert total == pytest.approx(rules["full_attendance"])
 
 
-def test_delegate_votes_are_valued_against_committee_of_the_whole_roll_calls(ruleset):
-    rules = ruleset.raw["votes"]
-    [delegate] = score_votes([vote("yea", who="NORTON", vote_id="118-h1-1")], ruleset, SESSIONS,
-                             lambda *_: True, delegates=frozenset({"NORTON"}))
-    assert delegate.points * rules["expected_roll_calls"]["delegate"] == pytest.approx(rules["full_attendance"])
+def test_each_week_pays_by_that_weeks_participation(ruleset):
+    weeks = ruleset.raw["settlement"]["weeks"]
+    week_value = ruleset.raw["votes"]["full_attendance"] / weeks
+    # week 1: 1 of 2 cast; week 2: none cast; later weeks have no roll calls
+    votes = [vote("yea", day=D(2023, 1, 4)), vote("not_voting", day=D(2023, 1, 5), vote_id="118-s1-2"),
+             vote("not_voting", day=D(2023, 1, 11), vote_id="118-s1-3")]
+    items = weekly_votes(score_votes(votes, ruleset, SESSIONS[:1], lambda *_: True))
+    assert len(items) == weeks
+    assert items[0].points == pytest.approx(week_value * 0.5)
+    assert items[1].points == 0
+    assert items[2].points == pytest.approx(week_value / 3)  # no roll calls: session-to-date rate
+
+
+def test_votes_prorate_by_days_seated(ruleset):
+    weeks = ruleset.raw["settlement"]["weeks"]
+    week_value = ruleset.raw["votes"]["full_attendance"] / weeks
+    votes = [vote("yea", day=D(2023, 1, 4))]
+    items = weekly_votes(score_votes(votes, ruleset, SESSIONS[:1], lambda who, day: day < D(2023, 1, 13)))
+    assert [round(i.points / week_value, 3) for i in items] == [1.0, round(3 / 7, 3)]
 
 
 def test_yea_on_a_confirmed_nomination_scores_extra(ruleset):
     votes = [vote("yea", "On the Nomination", "Nomination Confirmed"),
              vote("nay", "On the Nomination", "Nomination Confirmed", who="Y")]
-    items = score_votes(votes, ruleset, SESSIONS, lambda *_: True)
-    assert sorted((i.bioguide_id, i.category) for i in items) == [
-        ("X", "CONFIRMATION_SUCCESS"), ("X", "VOTE_CAST"), ("Y", "VOTE_CAST")]
+    items = score_votes(votes, ruleset, SESSIONS[:1], lambda *_: True)
+    assert [(i.bioguide_id, i.vote_id) for i in items if i.category == "CONFIRMATION_SUCCESS"] == [("X", "118-s1-1")]
 
 
 def test_senate_productivity_factor_spares_votes_and_power(ruleset):
     from pipeline.scoring import ScoreItem
     items = [ScoreItem("SEN", 1, "productivity", "PASSED_CHAMBER", D(2023, 5, 1), 10.0, bill_id="118-s-1"),
-             ScoreItem("SEN", 1, "productivity", "VOTE_CAST", D(2023, 5, 1), 1.0, vote_id="118-s1-1"),
+             ScoreItem("SEN", 1, "productivity", "VOTE_CAST", D(2023, 5, 1), 1.0),
              ScoreItem("SEN", 1, "power", "COMMITTEE_SEAT", D(2023, 5, 1), 50.0),
              ScoreItem("REP", 1, "productivity", "PASSED_CHAMBER", D(2023, 5, 1), 10.0, bill_id="118-hr-1")]
     apply_chamber_factor(items, ruleset, lambda who, day: "sen" if who == "SEN" else "rep")
@@ -291,7 +303,16 @@ def test_positions_prorate_by_session_and_multiply_participation(ruleset):
 def test_floor_participation_skips_exempt_periods():
     votes = [vote("yea", day=D(2023, 2, 1)), vote("not_voting", day=D(2023, 3, 1)),
              vote("not_voting", day=D(2023, 11, 1)), vote("not_voting", day=D(2023, 12, 1))]
-    rate = floor_participation(votes, {"X": [(D(2023, 10, 25), D(2025, 1, 3))]})
-    assert rate("X", D(2023, 1, 3), D(2024, 1, 3)) == 0.5
-    assert rate("X", D(2023, 11, 1), D(2024, 1, 3)) == 1.0  # no votes outside the exempt post
+    rate = floor_participation(votes, {"X": [(D(2023, 10, 25), D(2025, 1, 3))]}, SESSIONS, 52)
+    assert rate("X", D(2023, 1, 31), D(2023, 2, 7)) == 1.0  # settlement weeks start on Jan 3
+    assert rate("X", D(2023, 2, 28), D(2023, 3, 7)) == 0.0
+    assert rate("X", D(2023, 11, 1), D(2024, 1, 3)) == 0.5  # exempt: only the to-date rate
     assert rate("NOBODY", D(2023, 1, 3), D(2024, 1, 3)) == 1.0
+
+
+def test_participation_weights_weeks_by_days_held():
+    votes = [vote("yea", day=D(2023, 1, 4)), vote("not_voting", day=D(2023, 1, 11), vote_id="118-s1-2")]
+    rate = floor_participation(votes, {}, SESSIONS, 52)
+    # week 1 full, week 2 none, then the to-date rate of 1/2 for the rest of the session
+    assert rate("X", D(2023, 1, 3), D(2023, 1, 17)) == pytest.approx(0.5)
+    assert rate("X", D(2023, 1, 3), D(2023, 1, 10)) == 1.0

@@ -185,19 +185,20 @@ COSPONSOR_ADDED = 400
 AMENDMENT_OFFERED = 40
 
 [votes]  # Design-Scoring §7.1-7.3
-# A vote cast (yea, nay, or present) is worth full_attendance / expected roll calls in the
-# member's chamber, so perfect attendance is worth the same per session in both chambers
-# although the House holds about twice as many roll calls.
+# Votes settle weekly: each settlement week is worth full_attendance / weeks, paid by the
+# share of that week's roll calls the member cast (yea, nay, or present) out of those they
+# were recorded on. Perfect attendance is worth full_attendance a session in either chamber,
+# and for delegates (Committee of the Whole roll calls only), however many roll calls are
+# held: 724 in the House and 352 in the Senate in 2023, but 362 and 659 in 2025.
 full_attendance = 230.0
 confirmation = 0.0      # extra, on a vote on a nomination
 confirmation_success = 1.0  # extra, voting yea on a nomination that is confirmed
 
-[votes.expected_roll_calls]  # per session; 118th Congress averages
-rep = 620
-sen = 345
-# Delegates and the Resident Commissioner vote only in the Committee of the Whole
-# (394 roll calls in 2023, 144 in 2024).
-delegate = 270
+# Points that depend on attendance (votes, and the participation multiplier on seats) settle
+# by week, so a week's points are final when it ends. A week without roll calls counts at the
+# member's session-to-date participation.
+[settlement]
+weeks = 52
 
 # Positional points by the holder's chamber. Senators hold about twice as many seats
 # (median 4 committees and 9 subcommittees against 2 and 4 in the House), so their
@@ -244,6 +245,7 @@ slin00 = 2
 hszs00 = 2  # Select Committee on the CCP
 hsfd00 = 2  # Select Subcommittee on the Weaponization of the Federal Government
 hsvc00 = 2  # Select Subcommittee on the Coronavirus Pandemic
+hsqj00 = 2  # Select Subcommittee on January 6 (119th)
 # Tier 3
 hsag00 = 3
 hsed00 = 3
@@ -326,6 +328,9 @@ round_to = 10
 # last session get the chamber median.
 productivity_shrink = 0.7
 min_days_served = 60
+# A new Congress seats its committees weeks after it convenes. Until its rosters are posted,
+# committee seats are projected from the last Congress and priced at this discount.
+unposted_seat_discount = 0.10
 # Donations: -band .. +band by percentile of FEC cycle receipts, ranked within chamber and
 # election status. Up for re-election: a flat premium. The product is clamped.
 donations_band = 0.15

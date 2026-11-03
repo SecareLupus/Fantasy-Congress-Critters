@@ -12,11 +12,20 @@ Projected points use only what is known on the session's first day:
 The market multiplier moves the price away from projected value on purpose: donations
 (cycle receipts, ranked within chamber and election status) and a re-election premium.
 
+A new Congress seats its committees weeks after it convenes. Until then, committee seats
+are projected (carried_seats): returning members keep the seats they held when the last
+Congress ended, with chairs and ranking members swapped in a chamber whose majority changed,
+and members new to their chamber get what that chamber's freshmen held last Congress. The
+projection is discounted by `unposted_seat_discount`.
+
 Every constant comes from the ruleset's [pricing] section.
 """
 
 from dataclasses import dataclass
 from statistics import median
+
+# When a chamber's majority changes, chairs become ranking members and the reverse.
+MAJORITY_SWAP = {"chair": "ranking_member", "ranking_member": "chair"}
 
 
 @dataclass
@@ -108,3 +117,37 @@ def price_session(members: list[Member], cfg: dict) -> list[Price]:
             signing, weekly = fees(cost, cfg)
             prices.append(Price(m.bioguide_id, chamber, power, productivity, mult, cost, signing, weekly))
     return prices
+
+
+@dataclass
+class HeldSeat:
+    bioguide_id: str
+    chamber: str  # rep | sen
+    category: str  # COMMITTEE_SEAT | SUBCOMMITTEE_SEAT
+    role: str
+    value: float  # per session, chamber factor applied
+
+
+def carried_seats(held: list[HeldSeat], flipped: set[str], freshmen: set[str], positions: dict,
+                  seated: dict[str, str], seated_before: dict[str, str]) -> dict[str, float]:
+    """Projected committee seat value for each member seated in the new Congress (`seated`,
+    bioguide -> chamber), from the seats `held` when the last Congress ended (when the
+    members in `seated_before` sat). `flipped` holds the chambers whose majority changed.
+    Members new to their chamber get the median of what last Congress's `freshmen` in that
+    chamber held."""
+    def role_mult(seat: HeldSeat, role: str) -> float:
+        table = positions["committee_roles"] if seat.category == "COMMITTEE_SEAT" else positions["subcommittee_bonus"]
+        return table.get(role, table["other"])
+
+    carried: dict[str, float] = {}
+    for seat in held:
+        value = seat.value
+        if seat.chamber in flipped and seat.role in MAJORITY_SWAP:
+            value = value / role_mult(seat, seat.role) * role_mult(seat, MAJORITY_SWAP[seat.role])
+        carried[seat.bioguide_id] = carried.get(seat.bioguide_id, 0.0) + value
+    newcomer = {}
+    for chamber in set(seated.values()):
+        values = [carried.get(b, 0.0) for b, c in seated_before.items() if c == chamber and b in freshmen]
+        newcomer[chamber] = median(values) if values else 0.0
+    return {b: carried.get(b, 0.0) if seated_before.get(b) == chamber else newcomer[chamber]
+            for b, chamber in seated.items()}
