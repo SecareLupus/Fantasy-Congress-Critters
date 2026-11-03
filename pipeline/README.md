@@ -47,7 +47,7 @@ Raw files land in `data/raw/` (gitignored). `load` is idempotent: each bill and 
 
 ## Scoring
 
-`critters score` runs the engine in `scoring.py` against a ruleset (default `rulesets/default.toml`) and saves a run. Every constant lives in the ruleset; Design-Scoring §10 lists how v0.1 interprets the open rules. `critters report` prints the median power and productivity of members seated for a whole session, the productivity scale that would make the median member even, the point composition by category, and the top ten critters per session.
+`critters score` runs the engine in `scoring.py` against a ruleset (default `rulesets/default.toml`) and saves a run. Every constant lives in the ruleset; Design-Scoring §10 lists how v0.1 interprets the open rules. `critters report` prints the median power and productivity of members seated for a whole session, the productivity scale that would make the median member even, the Senate power and productivity factors that would match the median House member, the point composition by category, and the top ten critters per session.
 
 ## Normalization notes
 

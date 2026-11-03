@@ -89,6 +89,11 @@ def score_congress(conn, congress: int, ruleset: scoring.Ruleset) -> tuple[int, 
         items.extend(scoring.score_bill(bill, ruleset, sessions, on_committee))
     scoring.apply_caps(items, ruleset)
     items.extend(scoring.score_votes(votes, ruleset, sessions, seated))
+
+    def chamber_of(bioguide: str, day) -> str:
+        return "sen" if any(a <= day <= b for a, b in terms.get((bioguide, "sen"), [])) else "rep"
+
+    scoring.apply_chamber_factor(items, ruleset, chamber_of)
     items.extend(scoring.score_positions(positions, ruleset, sessions,
                                          scoring.floor_participation(votes, exempt)))
     return db.save_score_run(conn, congress, ruleset, items), items
@@ -115,8 +120,14 @@ def cmd_report(args) -> None:
         print(f"{session:>7} {chamber:>7} {n:>4} {med_pow:>10.1f} {med_prod:>9.1f} {max_pow:>10.1f} {max_prod:>9.1f}")
     print(f"productivity scale for an even median member: {float(scale) * report['even_scale']:.4f}"
           f" (this run: {scale})")
-    for chamber, factor, ratio in report["even_chamber_factor"]:
-        print(f"{chamber} power factor for an even median member: {factor * ratio:.3f} (this run: {factor})")
+    medians = {row[0]: row[1:] for row in report["chamber_medians"]}
+    if "rep" in medians and "sen" in medians:
+        _, _, house_power, house_prod = medians["rep"]
+        power_factor, prod_factor, sen_power, sen_prod = medians["sen"]
+        print(f"sen power factor to match the median House member: {power_factor * house_power / sen_power:.3f}"
+              f" (this run: {power_factor})")
+        print(f"sen productivity factor to match the median House member: {prod_factor * house_prod / sen_prod:.3f}"
+              f" (this run: {prod_factor})")
     print("\ncomposition")
     for pillar, category, points, pct in report["composition"]:
         print(f"  {pillar:<13} {category:<26} {points:>10.0f} {pct:>5.1f}%")

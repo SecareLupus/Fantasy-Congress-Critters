@@ -8,7 +8,15 @@ version = "0.1.0"
 [productivity]
 # Multiplies every productivity item. Calibrated so the median full-session member earns
 # about as much from productivity as from power (`critters report` prints the even value).
-scale = 0.1
+scale = 0.13
+
+# Productivity other than votes, by the earner's chamber. Senators do more non-vote
+# legislating per head (median 165 against 101 in 2023), so together with
+# positions.chamber_factor this brings the median senator level with the median House
+# member on both pillars. Votes are already equal per chamber (see [votes]).
+[productivity.chamber_factor]
+rep = 1.0
+sen = 0.58
 
 # Bill-type weight on every event of a bill ("optional rarity modifier by bill type",
 # Design-Scoring §8.3 1.1). Simple resolutions are mostly commemorations or House rules.
@@ -177,16 +185,23 @@ COSPONSOR_ADDED = 400
 AMENDMENT_OFFERED = 40
 
 [votes]  # Design-Scoring §7.1-7.3
-cast = 1.0              # yea, nay, or present
+# A vote cast (yea, nay, or present) is worth full_attendance / expected roll calls in the
+# member's chamber, so perfect attendance is worth the same per session in both chambers
+# although the House holds about twice as many roll calls.
+full_attendance = 230.0
 confirmation = 0.0      # extra, on a vote on a nomination
 confirmation_success = 1.0  # extra, voting yea on a nomination that is confirmed
 
+[votes.expected_roll_calls]  # per session; 118th Congress averages
+rep = 620
+sen = 345
+
 # Positional points by the holder's chamber. Senators hold about twice as many seats
 # (median 4 committees and 9 subcommittees against 2 and 4 in the House), so their
-# positions are scaled to make the median senator even on power and productivity.
+# positions are scaled to bring the median senator level with the median House member.
 [positions.chamber_factor]
 rep = 1.0
-sen = 0.5
+sen = 0.43
 
 [positions.committee_tiers]  # base value per session (Design-Scoring §8.2)
 1 = 100
