@@ -113,10 +113,25 @@ Users may create custom leagues with varying degrees of control.
 
 ## 6A.7 League Settings
 
-Roster and competition rules are set per league or season, not globally. Official leagues use the Standard values (TBD); private leagues may change them within these options.
+Roster and competition rules are settings on each league, not constants in the engine or the ruleset. A game master sets them when creating the league: a GameMaker for official leagues, a commissioner for private ones. They are levers for balance and for strategic variety, so official leagues may differ from one another too.
+
+* A league starts from a **preset**, a named set of settings authored by GameMakers ("Standard" is one), and the game master overrides any setting within the limits below. The league keeps its own copy, so editing a preset later only affects new leagues.
+* A league also records the ruleset (§6A.1) it scores and prices with, frozen as a copy.
+* Settings and ruleset can change until the league starts, and are frozen from then on.
+* The engine rejects settings outside these limits, and ones that break core invariants.
 
 | Setting | Options |
 | :--- | :--- |
+| **budget_rules.annual_budget** | Play dollars per legislative year, at least 1. Standard preset: $50,000, about 8 × the 75th-percentile Session Cost (Design-Economy §6.1). |
+| **roster_rules.roster_limit** | Most critters a roster can hold, 1–100. Standard preset: 8. |
+| **roster_rules.chamber_slots** | Optional: most critters from each chamber, `{house, senate}`. Each is at most the roster limit, and together they must be able to fill a roster. Standard preset: none. |
+| **win_condition** | `cumulative` points, or weekly `head_to_head` matchups. Standard preset: cumulative. |
+| **drop_cost.extra_fee** | Play dollars charged on a drop, on top of the signing fee (Design-Economy §5.2), which is always lost while unspent weekly fees return. Standard preset: 0. |
+| **drop_cost.points_penalty** | Points deducted from the player's total on a drop, not floored at zero (a player's own decision, so it doesn't break "no negative critter scores"). Standard preset: 0. |
+
+League timing follows the league type (§6A.4): a session or a Congress runs from January 3, a presidential league from January 20 after a presidential election, a senatorial league over a six-year class term. Standard Private leagues use one of those timings; Flexible Private leagues set their own dates.
+
+--- | :--- |
 | **Roster size** | Maximum critters per roster |
 | **Roster slots** | Optional per-chamber slots (e.g., N House, M Senate) |
 | **Win condition** | Cumulative points; weekly head-to-head matchups |

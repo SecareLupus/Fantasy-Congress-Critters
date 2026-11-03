@@ -380,3 +380,48 @@ def freshmen(conn: psycopg.Connection, start, end) -> set[str]:
     return {row[0] for row in conn.execute("""
         SELECT bioguide_id FROM critter_terms GROUP BY bioguide_id, term_type
         HAVING min(start_date) >= %s AND min(start_date) < %s""", (start, end))}
+
+
+def save_preset(conn: psycopg.Connection, name: str, description: str | None, settings: dict, by: str) -> None:
+    conn.execute("""
+        INSERT INTO league_presets (name, description, settings, authored_by) VALUES (%s, %s, %s, %s)
+        ON CONFLICT (name) DO UPDATE SET description = excluded.description, settings = excluded.settings,
+            authored_by = excluded.authored_by, updated_at = now()""",
+        (name, description, Jsonb(settings), by))
+    conn.commit()
+
+
+def presets(conn: psycopg.Connection) -> dict[str, dict]:
+    return {name: {"description": desc, "settings": settings, "authored_by": by, "updated_at": at}
+            for name, desc, settings, by, at in conn.execute(
+                "SELECT name, description, settings, authored_by, updated_at FROM league_presets ORDER BY name")}
+
+
+LEAGUE_COLUMNS = ("league_id", "name", "league_type", "visibility", "start_date", "end_date",
+                  "ruleset_version", "ruleset", "preset", "settings", "created_by", "creator_role",
+                  "created_at", "updated_at")
+
+
+def create_league(conn: psycopg.Connection, **league) -> int:
+    cols = [c for c in LEAGUE_COLUMNS if c in league]
+    values = [Jsonb(league[c]) if c in ("ruleset", "settings") else league[c] for c in cols]
+    league_id = conn.execute(
+        f"INSERT INTO leagues ({', '.join(cols)}) VALUES ({', '.join(['%s'] * len(cols))}) RETURNING league_id",
+        values).fetchone()[0]
+    conn.commit()
+    return league_id
+
+
+def leagues(conn: psycopg.Connection, league_id: int | None = None) -> list[dict]:
+    rows = conn.execute(
+        f"SELECT {', '.join(LEAGUE_COLUMNS)} FROM leagues"
+        + (" WHERE league_id = %s" if league_id else "") + " ORDER BY league_id",
+        (league_id,) if league_id else ()).fetchall()
+    return [dict(zip(LEAGUE_COLUMNS, row)) for row in rows]
+
+
+def update_league(conn: psycopg.Connection, league_id: int, settings: dict,
+                  ruleset_version: str, ruleset: dict) -> None:
+    conn.execute("""UPDATE leagues SET settings = %s, ruleset_version = %s, ruleset = %s, updated_at = now()
+                    WHERE league_id = %s""", (Jsonb(settings), ruleset_version, Jsonb(ruleset), league_id))
+    conn.commit()

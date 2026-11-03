@@ -1,0 +1,21 @@
+# Standard league settings, authored by the GameMakers. Load or update it with
+#   critters league preset save standard --file presets/standard.toml --by <you>
+# Leagues copy a preset's settings when they're created, so editing it later only
+# affects new leagues. Every setting can be overridden per league (Design-Rulesets §6A.7).
+description = "Standard: 8 critters, $50,000 a year, cumulative points"
+
+[settings]
+win_condition = "cumulative"
+
+[settings.budget_rules]
+# About 8 x the 75th-percentile Session Cost in the 118th backtest (Design-Economy §6.1).
+annual_budget = 50000
+
+[settings.roster_rules]
+roster_limit = 8
+# chamber_slots left out: no per-chamber limit. To set one: chamber_slots = { house = 6, senate = 2 }
+
+[settings.drop_cost]
+# The signing fee is always lost on a drop (Design-Economy §5.2). These add to it.
+extra_fee = 0
+points_penalty = 0

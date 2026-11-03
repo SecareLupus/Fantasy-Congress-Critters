@@ -1,11 +1,13 @@
 import argparse
+import json
 import time
+import tomllib
 from datetime import date, timedelta
 from statistics import correlation, quantiles
 
 from pathlib import Path
 
-from . import db, download, fec, legislators, pricing, rosters, scoring
+from . import db, download, fec, leagues, legislators, pricing, rosters, scoring
 from .billstatus import iter_zip
 from .config import BILL_TYPES
 from .normalize import normalize_bill
@@ -147,7 +149,15 @@ def cmd_price(args) -> None:
         db.init_schema(conn)
         run_id = args.run or conn.execute("SELECT max(run_id) FROM score_runs").fetchone()[0]
         congress = conn.execute("SELECT congress FROM score_runs WHERE run_id = %s", (run_id,)).fetchone()[0]
-        ruleset = scoring.Ruleset.load(args.ruleset)
+        league = None
+        if args.league:
+            found = db.leagues(conn, args.league)
+            if not found:
+                raise SystemExit(f"no league {args.league}")
+            league = found[0]
+            ruleset = scoring.Ruleset(league["ruleset_version"], league["ruleset"])
+        else:
+            ruleset = scoring.Ruleset.load(args.ruleset)
         cfg = ruleset.raw["pricing"]
         cycle = args.fec_cycle or download.pricing_cycle(congress, args.session)
         path = download.fec_summary_path(cycle)
@@ -201,9 +211,11 @@ def cmd_price(args) -> None:
     print(f"{len(prices)} critters seated on {start}: "
           + ", ".join(f"{c} {sum(p.chamber == c for p in prices)}" for c in ("rep", "sen")))
     print(f"Session Cost: min ${costs[0]:,}  25% ${q1:,.0f}  median ${q2:,.0f}  75% ${q3:,.0f}  max ${costs[-1]:,}")
-    budget = ruleset.raw.get("league", {}).get("budget")
-    if budget:
-        print(f"budget ${budget:,} = {budget / q3:.1f} x the 75th percentile")
+    if league:
+        budget = league["settings"]["budget_rules"]["annual_budget"]
+        limit = league["settings"]["roster_rules"]["roster_limit"]
+        print(f"league {league['league_id']} ({league['name']}): budget ${budget:,} for {limit} critters, "
+              f"{budget / limit / q2:.2f} x the median price per slot, {budget / q3:.1f} x the 75th percentile")
 
     scored = [p for p in prices if actual.get(p.bioguide_id)]
     if scored:
@@ -225,6 +237,102 @@ def cmd_price(args) -> None:
     for p in sorted(prices, key=lambda p: -p.session_cost)[:args.top]:
         print(f"  {names[p.bioguide_id]:<28} {p.chamber} ${p.session_cost:>6,}  projected {p.projected_power:>4.0f} power "
               f"+ {p.projected_productivity:>4.0f} productivity, x{p.multiplier:.2f}")
+
+
+def _print_league(league: dict) -> None:
+    print(f"league {league['league_id']}: {league['name']}")
+    print(f"  {league['league_type']} ({league['visibility']}), {league['start_date']} to {league['end_date']}")
+    print(f"  ruleset {league['ruleset_version']}, from preset {league['preset'] or '(none)'}")
+    print(f"  created by {league['created_by']} ({league['creator_role']}) {league['created_at']:%Y-%m-%d}")
+    state = "open to changes until it starts" if leagues.can_change(league["start_date"], date.today()) else "started: frozen"
+    print(f"  {state}")
+    for s in leagues.SETTINGS:
+        print(f"  {s.path:<30} {json.dumps(leagues.get_path(league['settings'], s.path))}")
+
+
+def _check_or_exit(settings: dict) -> None:
+    errors = leagues.validate(settings)
+    if errors:
+        raise SystemExit("invalid league settings:\n  " + "\n  ".join(errors))
+
+
+def cmd_preset_save(args) -> None:
+    with open(args.file, "rb") as f:
+        data = tomllib.load(f)
+    settings = leagues.complete(data["settings"])
+    _check_or_exit(settings)
+    with db.connect() as conn:
+        db.init_schema(conn)
+        db.save_preset(conn, args.name, data.get("description"), settings, args.by)
+    print(f"preset {args.name} saved by {args.by}")
+
+
+def cmd_preset_list(args) -> None:
+    with db.connect() as conn:
+        db.init_schema(conn)
+        for name, p in db.presets(conn).items():
+            print(f"{name}: {p['description'] or ''} (by {p['authored_by']}, {p['updated_at']:%Y-%m-%d})")
+            for s in leagues.SETTINGS:
+                print(f"  {s.path:<30} {json.dumps(leagues.get_path(p['settings'], s.path))}")
+
+
+def cmd_league_create(args) -> None:
+    official = args.type in leagues.OFFICIAL_TYPES
+    role = args.role or ("gamemaker" if official else "commissioner")
+    if official and role != "gamemaker":
+        raise SystemExit("official leagues are created by GameMakers (--role gamemaker)")
+    timing = args.timing if args.type == "standard_private" else args.type
+    if timing not in leagues.OFFICIAL_TYPES + ("flexible_private",):
+        raise SystemExit("a standard_private league needs --timing, one of: " + ", ".join(leagues.OFFICIAL_TYPES))
+    try:
+        start, end = leagues.league_dates(timing, congress=args.congress, session=args.session,
+                                          year=args.year, start=args.start, end=args.end)
+        overrides = leagues.parse_overrides(args.set or [])
+    except ValueError as e:
+        raise SystemExit(str(e))
+    ruleset = scoring.Ruleset.load(args.ruleset)
+    with db.connect() as conn:
+        db.init_schema(conn)
+        preset = db.presets(conn).get(args.preset)
+        if preset is None:
+            raise SystemExit(f"no preset {args.preset!r}; save one with critters league preset save")
+        settings = leagues.resolve(preset["settings"], overrides)
+        _check_or_exit(settings)
+        league_id = db.create_league(
+            conn, name=args.name, league_type=args.type, visibility="official" if official else "private",
+            start_date=start, end_date=end, ruleset_version=ruleset.version, ruleset=ruleset.raw,
+            preset=args.preset, settings=settings, created_by=args.by, creator_role=role)
+        _print_league(db.leagues(conn, league_id)[0])
+
+
+def cmd_league_update(args) -> None:
+    with db.connect() as conn:
+        db.init_schema(conn)
+        found = db.leagues(conn, args.league)
+        if not found:
+            raise SystemExit(f"no league {args.league}")
+        league = found[0]
+        if not leagues.can_change(league["start_date"], date.today()):
+            raise SystemExit(f"league {args.league} started on {league['start_date']}: its settings and ruleset are frozen")
+        try:
+            settings = leagues.resolve(league["settings"], leagues.parse_overrides(args.set or []))
+        except ValueError as e:
+            raise SystemExit(str(e))
+        _check_or_exit(settings)
+        ruleset = scoring.Ruleset.load(args.ruleset) if args.ruleset else \
+            scoring.Ruleset(league["ruleset_version"], league["ruleset"])
+        db.update_league(conn, args.league, settings, ruleset.version, ruleset.raw)
+        _print_league(db.leagues(conn, args.league)[0])
+
+
+def cmd_league_show(args) -> None:
+    with db.connect() as conn:
+        db.init_schema(conn)
+        found = db.leagues(conn, args.league)
+        if args.league and not found:
+            raise SystemExit(f"no league {args.league}")
+        for league in found:
+            _print_league(league)
 
 
 def cmd_load(args) -> None:
@@ -285,6 +393,43 @@ def main() -> None:
     p.add_argument("--run", type=int, help="run id (default: latest)")
     p.set_defaults(func=cmd_report)
 
+    p = sub.add_parser("league", help="leagues and their settings, for game masters")
+    league_sub = p.add_subparsers(required=True)
+    pp = league_sub.add_parser("preset", help="settings presets authored by GameMakers")
+    preset_sub = pp.add_subparsers(required=True)
+    q = preset_sub.add_parser("save", help="create or replace a preset from a TOML file")
+    q.add_argument("name")
+    q.add_argument("--file", type=Path, required=True)
+    q.add_argument("--by", required=True, help="who authored it")
+    q.set_defaults(func=cmd_preset_save)
+    q = preset_sub.add_parser("list", help="show presets")
+    q.set_defaults(func=cmd_preset_list)
+    q = league_sub.add_parser("create", help="create a league from a preset, with overrides")
+    q.add_argument("--name", required=True)
+    q.add_argument("--type", required=True, choices=leagues.OFFICIAL_TYPES + leagues.PRIVATE_TYPES)
+    q.add_argument("--timing", choices=leagues.OFFICIAL_TYPES, help="for standard_private: whose dates to follow")
+    q.add_argument("--congress", type=int)
+    q.add_argument("--session", type=int)
+    q.add_argument("--year", type=int, help="annual: the year; presidential or senatorial: the first year")
+    q.add_argument("--start", type=date.fromisoformat, help="flexible_private only")
+    q.add_argument("--end", type=date.fromisoformat, help="flexible_private only (exclusive)")
+    q.add_argument("--preset", default="standard")
+    q.add_argument("--set", action="append", metavar="PATH=VALUE",
+                   help="override a setting, e.g. budget_rules.annual_budget=40000 or "
+                        "'roster_rules.chamber_slots={\"house\": 6, \"senate\": 2}'")
+    q.add_argument("--ruleset", type=Path, default=DEFAULT_RULESET)
+    q.add_argument("--by", required=True, help="the game master creating it")
+    q.add_argument("--role", choices=("gamemaker", "commissioner"))
+    q.set_defaults(func=cmd_league_create)
+    q = league_sub.add_parser("update", help="change a league's settings or ruleset before it starts")
+    q.add_argument("league", type=int)
+    q.add_argument("--set", action="append", metavar="PATH=VALUE")
+    q.add_argument("--ruleset", type=Path, help="switch to this ruleset")
+    q.set_defaults(func=cmd_league_update)
+    q = league_sub.add_parser("show", help="show one league, or all")
+    q.add_argument("league", type=int, nargs="?")
+    q.set_defaults(func=cmd_league_show)
+
     p = sub.add_parser("price", help="price critters for a session from a scoring run")
     p.add_argument("--run", type=int, help="run id (default: latest)")
     p.add_argument("--session", type=int, default=2, help="session to price (needs the one before it)")
@@ -296,6 +441,7 @@ def main() -> None:
     p.add_argument("--fec-cycle", type=int, help="FEC cycle for donations (default: last one complete "
                                                   "when the session opens)")
     p.add_argument("--ruleset", type=Path, default=DEFAULT_RULESET, help="ruleset with the pricing constants")
+    p.add_argument("--league", type=int, help="price with this league's ruleset and check its budget")
     p.add_argument("--top", type=int, default=8)
     p.set_defaults(func=cmd_price)
 

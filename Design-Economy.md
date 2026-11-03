@@ -128,7 +128,7 @@ Rules:
 ### 6.1 Annual Budgets
 
 * Budgets are allocated **per legislative year**
-* The Standard budget is **$50,000** per legislative year, about 8 × the 75th-percentile Session Cost. An average 8-critter roster fits with room to spare. A roster can hold about three stars ($8,790–12,180) only if the rest comes from the cheaper tier. In the 2024 backtest, the 8 top scorers together cost $69,300, and the best roster $50,000 could have bought with hindsight scored 5,712 points, against about 2,800 for a roster of median critters.
+* Each league sets its budget (Design-Rulesets §6A.7). The Standard preset's is **$50,000** per legislative year, about 8 × the 75th-percentile Session Cost. An average 8-critter roster fits with room to spare. A roster can hold about three stars ($8,790–12,180) only if the rest comes from the cheaper tier. In the 2024 backtest, the 8 top scorers together cost $69,300, and the best roster $50,000 could have bought with hindsight scored 5,712 points, against about 2,800 for a roster of median critters.
 * Players must plan across:
 
   * Multiple sessions

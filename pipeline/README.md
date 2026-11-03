@@ -19,6 +19,8 @@ uv run critters load --congress 118
 uv run critters score --congress 118   # score with rulesets/default.toml
 uv run critters report                 # balance and composition of the latest run
 uv run critters price                  # Session Costs for session 2 from the latest run
+uv run critters league preset save standard --file presets/standard.toml --by <you>
+uv run critters league create --name "2026 Session" --type session --congress 119 --session 2 --by <you>
 uv run pytest
 ```
 
@@ -46,6 +48,7 @@ Raw files land in `data/raw/` (gitignored). `load` is idempotent: each bill and 
 - `critter_leadership`: chamber and party leadership posts (Speaker, floor leaders, whips, conference posts).
 - `score_runs`, `score_items`: one run per scoring of a Congress with a ruleset, and one item per point-earning fact: an event credit, a vote, or a position held in a session. Each item records its pillar (power or productivity), category, date, source (bill, amendment, vote, or committee), and the factors behind its points.
 - `critter_prices`: Session Costs priced from a scoring run: projected power and productivity, market multiplier, signing fee and weekly fee per critter.
+- `league_presets`, `leagues`: settings presets authored by GameMakers, and leagues with their resolved settings and a frozen copy of their ruleset.
 - `critters`, `critter_terms`, `committees`: reference data.
 
 ## Scoring
@@ -55,6 +58,10 @@ Raw files land in `data/raw/` (gitignored). `load` is idempotent: each bill and 
 ## Pricing
 
 `critters price` prices the critters seated on a session's first day (Design-Economy §5.2) from a scoring run, using the `[pricing]` constants in the ruleset. Projected power is the value of the seats held that day times last session's participation; projected productivity is last session's productivity per full year, pulled toward the chamber median. Donations use the last FEC cycle complete when the session opens, so a backtest uses only what was known on day one. Session 2 reads session 1 of the same run; session 1 reads session 2 of the previous Congress's latest run (or `--prev-run`). A new Congress seats its committees weeks after it convenes: priced before its rosters are posted, committee seats are projected from the last Congress (chairs and ranking members swap where the majority changed; newcomers get the freshman median) at a discount, and `--as-of` prices on a later date instead. It saves `critter_prices` and prints the price spread, the budget against the 75th percentile, and, when the run has that session's scores, how well price tracked points and the best and worst value.
+
+## Leagues
+
+League rules are settings on each league, set by a game master (Design-Rulesets §6A.7), not constants in the code or the ruleset. `leagues.py` defines which settings exist and their limits; values come from presets (`presets/standard.toml`, loaded with `critters league preset save`) and from the game master's `--set path=value` overrides at `critters league create`. A league keeps its own copy of the settings and of its ruleset, and both are frozen once it starts (`critters league update` refuses after that). Official league types need `--role gamemaker`. `critters price --league ID` prices with the league's ruleset and checks its budget.
 
 ## Normalization notes
 
