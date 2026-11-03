@@ -120,8 +120,8 @@ Roster and competition rules are set per league or season, not globally. Officia
 | **Roster size** | Maximum critters per roster |
 | **Roster slots** | Optional per-chamber slots (e.g., N House, M Senate) |
 | **Win condition** | Cumulative points; weekly head-to-head matchups |
-| **Starting budget** | Amount per legislative year |
-| **Drop cost** | What dropping a critter costs: remaining reserved charges are still spent; a flat fee from the budget; or a points deduction from the player's total (not floored at zero). Without a cost, the full-session commitment has no force. |
+| **Starting budget** | Amount per legislative year (Standard: $50,000) |
+| **Drop cost** | What dropping a critter costs. Standard: the signing fee (§5.2), which is never refunded, while unspent weekly fees return. Private leagues may add a flat fee from the budget or a points deduction from the player's total (not floored at zero). Without a cost, the full-session commitment has no force. |
 
 ---
 
