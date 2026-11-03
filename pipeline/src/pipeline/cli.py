@@ -1,7 +1,7 @@
 import argparse
 import time
 
-from . import db, download, legislators
+from . import db, download, legislators, rosters
 from .billstatus import iter_zip
 from .config import BILL_TYPES
 from .normalize import normalize_bill
@@ -11,8 +11,27 @@ from .votes import iter_house_votes, parse_voteview_senate
 def cmd_download(args) -> None:
     download.download_billstatus(args.congress, force=args.force)
     download.download_legislators(force=args.force)
+    download.download_roster_history(args.congress, force=args.force)
     download.download_house_votes(args.congress, force=args.force)
     download.download_senate_votes(args.congress, force=args.force)
+
+
+# Committee code prefix -> the term types whose dates bound a seat on it.
+ROSTER_TERM_TYPES = {"h": ("rep",), "s": ("sen",), "j": ("rep", "sen")}
+
+
+def load_rosters(conn, congress: int) -> None:
+    start, end = download.congress_dates(congress)
+    snapshots = rosters.load_snapshots(download.roster_history_dir(congress))
+    terms = db.chamber_terms(conn)
+    memberships = []
+    for m in rosters.build_memberships(snapshots, start, end):
+        seat_terms = sorted(t for tt in ROSTER_TERM_TYPES[m.seat.committee_code[0]]
+                            for t in terms.get((m.seat.bioguide_id, tt), []))
+        memberships.extend(rosters.clip_to_terms(m, seat_terms))
+    db.save_memberships(conn, congress, memberships)
+    conn.commit()
+    print(f"committee memberships {congress}: {len(memberships)} from {len(snapshots)} snapshots")
 
 
 def cmd_load(args) -> None:
@@ -20,6 +39,7 @@ def cmd_load(args) -> None:
         db.init_schema(conn)
         print(f"critters: {legislators.load_critters(conn)}")
         print(f"committees: {legislators.load_committees(conn)}")
+        load_rosters(conn, args.congress)
         for bill_type in BILL_TYPES:
             start, count, n_events = time.time(), 0, 0
             for bill in iter_zip(download.billstatus_path(args.congress, bill_type)):
@@ -29,6 +49,7 @@ def cmd_load(args) -> None:
                 n_events += len(events)
             conn.commit()
             print(f"{bill_type}: {count} bills, {n_events} events ({time.time() - start:.1f}s)")
+        print(f"committees added from bill activity: {db.add_missing_committees(conn)}")
         for session in (1, 2):
             start, count, n_members = time.time(), 0, 0
             for rc in iter_house_votes(download.house_votes_dir(args.congress, session)):

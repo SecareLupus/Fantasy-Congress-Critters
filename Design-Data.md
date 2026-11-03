@@ -16,7 +16,7 @@ For each data domain, the game designates **one canonical source of record**. On
 | Data Domain                      | Canonical Source                                              | Purpose                         |
 | -------------------------------- | ------------------------------------------------------------- | ------------------------------- |
 | Legislation (bills, resolutions) | Congress.gov API (Library of Congress)                        | Bill lifecycle, status, actions |
-| Committees & memberships         | House Clerk member data; Senate committee membership data     | Jurisdiction, gating, power     |
+| Committees & memberships         | House Clerk member data; Senate committee membership data (current); congress-legislators history (past, see note) | Jurisdiction, gating, power     |
 | Roll-call votes                  | House Clerk roll-call data; Senate: Voteview (see note)        | Participation & voting          |
 | Committee schedules & hearings   | House: docs.house.gov Committee Repository; Senate: senate.gov committee hearing schedule | Hearings, markups, oversight |
 | Committee recorded votes         | House: docs.house.gov Committee Repository; Senate: **gap**  | Committee participation multiplier |
@@ -25,6 +25,8 @@ For each data domain, the game designates **one canonical source of record**. On
 | Election odds                    | **Gap** (deferred with candidate drafting)                    | Candidate & future pricing      |
 
 **Senate roll calls:** senate.gov blocks automated downloads, so Senate votes come from [Voteview](https://voteview.com) (UCLA), an open dataset built from the official record. Its tallies are checked against the Senate's own vote counts in Congress.gov bill actions. The Senate's own feed can replace it if it becomes reachable; more canonical sources can be added per domain where that makes sense.
+
+**Past committee rosters:** the official sources publish current rosters only. Rosters for past sessions (backtests) are rebuilt from the commit history of the congress-legislators membership file, which is scraped from those official sources. Snapshots are sparse (20 days across the 118th Congress), so seat changes are dated when a snapshot shows them, weeks after the real change. Departures and mid-session arrivals use exact term dates. A live season should record the official rosters daily so dates are exact.
 
 The open-data `unitedstates/congress-legislators` dataset is the **secondary** source for the identifier crosswalk (bioguide, GovTrack, FEC, Wikidata) and for cross-checking memberships.
 

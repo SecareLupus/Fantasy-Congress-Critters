@@ -98,6 +98,25 @@ CREATE INDEX IF NOT EXISTS events_bill ON events (bill_id);
 CREATE INDEX IF NOT EXISTS events_type_date ON events (event_type, event_date);
 CREATE INDEX IF NOT EXISTS events_critter ON events (critter_id) WHERE critter_id IS NOT NULL;
 
+-- Committee seats over time, built from congress-legislators roster snapshots
+-- (see rosters.py). end_date is exclusive. first_seen/last_seen are the snapshot
+-- dates that evidence the seat; start/end are the effective dates used for scoring.
+CREATE TABLE IF NOT EXISTS committee_memberships (
+    congress       int NOT NULL,
+    committee_code text NOT NULL,
+    bioguide_id    text NOT NULL,
+    side           text,
+    role           text NOT NULL,
+    title          text,
+    start_date     date NOT NULL,
+    end_date       date NOT NULL,
+    first_seen     date NOT NULL,
+    last_seen      date NOT NULL,
+    CHECK (start_date < end_date)
+);
+CREATE INDEX IF NOT EXISTS committee_memberships_critter ON committee_memberships (bioguide_id);
+CREATE INDEX IF NOT EXISTS committee_memberships_committee ON committee_memberships (committee_code);
+
 -- Roll-call votes. The bill reference comes from the chamber's own record; it is
 -- the measure the vote was on (a rule vote points at the H.Res, not the bill it governs).
 CREATE TABLE IF NOT EXISTS roll_calls (
