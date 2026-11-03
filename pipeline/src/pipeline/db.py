@@ -7,6 +7,7 @@ from psycopg.types.json import Jsonb
 from .billstatus import Bill
 from .config import DATABASE_URL
 from .normalize import Event
+from .votes import RollCall
 
 
 def connect() -> psycopg.Connection:
@@ -60,4 +61,25 @@ def save_bill(conn: psycopg.Connection, bill: Bill, events: Iterable[Event]) -> 
                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)""",
             [(e.bill_id, e.event_type, e.event_date, e.chamber, e.committee_code, e.critter_id,
               e.source, e.detail) for e in events],
+        )
+
+
+def save_roll_call(conn: psycopg.Connection, rc: RollCall) -> None:
+    """Replace a roll call and its member positions."""
+    with conn.cursor() as cur:
+        cur.execute("DELETE FROM roll_calls WHERE vote_id = %s", (rc.vote_id,))
+        cur.execute(
+            """INSERT INTO roll_calls (vote_id, chamber, congress, session, roll_number, vote_date,
+                   vote_time, question, vote_type, result, legis_num, bill_id, amendment_num,
+                   amendment_author, description)
+               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
+            (rc.vote_id, rc.chamber, rc.congress, rc.session, rc.roll_number, rc.vote_date,
+             rc.vote_time, rc.question, rc.vote_type, rc.result, rc.legis_num, rc.bill_id,
+             rc.amendment_num, rc.amendment_author, rc.description),
+        )
+        cur.executemany(
+            """INSERT INTO member_votes (vote_id, bioguide_id, position, raw_position, party, state)
+               VALUES (%s, %s, %s, %s, %s, %s)""",
+            [(rc.vote_id, m.bioguide_id, m.position, m.raw_position, m.party, m.state)
+             for m in rc.members],
         )

@@ -97,3 +97,47 @@ CREATE TABLE IF NOT EXISTS events (
 CREATE INDEX IF NOT EXISTS events_bill ON events (bill_id);
 CREATE INDEX IF NOT EXISTS events_type_date ON events (event_type, event_date);
 CREATE INDEX IF NOT EXISTS events_critter ON events (critter_id) WHERE critter_id IS NOT NULL;
+
+-- Roll-call votes. The bill reference comes from the chamber's own record; it is
+-- the measure the vote was on (a rule vote points at the H.Res, not the bill it governs).
+CREATE TABLE IF NOT EXISTS roll_calls (
+    vote_id          text PRIMARY KEY,
+    chamber          text NOT NULL,
+    congress         int NOT NULL,
+    session          int NOT NULL,
+    roll_number      int NOT NULL,
+    vote_date        date NOT NULL,
+    vote_time        time,
+    question         text,
+    vote_type        text,
+    result           text,
+    legis_num        text,
+    bill_id          text,
+    amendment_num    text,
+    amendment_author text,
+    description      text,
+    UNIQUE (chamber, congress, session, roll_number)
+);
+CREATE INDEX IF NOT EXISTS roll_calls_bill ON roll_calls (bill_id);
+
+CREATE TABLE IF NOT EXISTS member_votes (
+    vote_id      text NOT NULL REFERENCES roll_calls ON DELETE CASCADE,
+    bioguide_id  text NOT NULL,
+    position     text NOT NULL,
+    raw_position text NOT NULL,
+    party        text,
+    state        text,
+    PRIMARY KEY (vote_id, bioguide_id)
+);
+CREATE INDEX IF NOT EXISTS member_votes_critter ON member_votes (bioguide_id);
+
+-- Bill actions that cite a roll call (from BILLSTATUS recordedVotes).
+CREATE OR REPLACE VIEW roll_call_actions AS
+SELECT rc.vote_id, a.bill_id, a.seq, a.action_date, a.action_code, a.source_name, a.text
+FROM bill_actions a
+CROSS JOIN LATERAL jsonb_array_elements(a.recorded_votes) v
+JOIN roll_calls rc
+  ON rc.chamber = v->>'chamber'
+ AND rc.congress = (v->>'congress')::int
+ AND rc.session = (v->>'session')::int
+ AND rc.roll_number = (v->>'roll_number')::int;

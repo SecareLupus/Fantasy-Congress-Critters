@@ -17,12 +17,14 @@ For each data domain, the game designates **one canonical source of record**. On
 | -------------------------------- | ------------------------------------------------------------- | ------------------------------- |
 | Legislation (bills, resolutions) | Congress.gov API (Library of Congress)                        | Bill lifecycle, status, actions |
 | Committees & memberships         | House Clerk member data; Senate committee membership data     | Jurisdiction, gating, power     |
-| Roll-call votes                  | House Clerk roll-call data; Senate roll-call data             | Participation & voting          |
+| Roll-call votes                  | House Clerk roll-call data; Senate: Voteview (see note)        | Participation & voting          |
 | Committee schedules & hearings   | House: docs.house.gov Committee Repository; Senate: senate.gov committee hearing schedule | Hearings, markups, oversight |
 | Committee recorded votes         | House: docs.house.gov Committee Repository; Senate: **gap**  | Committee participation multiplier |
 | Fundraising & donations          | OpenFEC API                                                   | Draft pricing inputs            |
 | Elections & incumbency           | House Clerk and Senate member data (seating)                  | Seating, term status            |
 | Election odds                    | **Gap** (deferred with candidate drafting)                    | Candidate & future pricing      |
+
+**Senate roll calls:** senate.gov blocks automated downloads, so Senate votes come from [Voteview](https://voteview.com) (UCLA), an open dataset built from the official record. Its tallies are checked against the Senate's own vote counts in Congress.gov bill actions. The Senate's own feed can replace it if it becomes reachable; more canonical sources can be added per domain where that makes sense.
 
 The open-data `unitedstates/congress-legislators` dataset is the **secondary** source for the identifier crosswalk (bioguide, GovTrack, FEC, Wikidata) and for cross-checking memberships.
 
@@ -73,7 +75,9 @@ All raw data is normalized into an **internal event ontology** before scoring. T
 | Bicameral | `CONFERENCE_APPOINTED`, `CONFERENCE_REPORT_AGREED`, `RESOLVED_DIFFERENCES` |
 | Presidential | `PRESENTED_TO_PRESIDENT`, `VETOED`, `VETO_OVERRIDE_PASSED`, `VETO_OVERRIDE_FAILED`, `BECAME_LAW` |
 
-Committee events carry the committee or subcommittee code; parent committees come from the committee reference data. Not yet implemented: amendment events (`AMENDMENT_OFFERED`, `AMENDMENT_ADOPTED`) and roll-call votes.
+Committee events carry the committee or subcommittee code; parent committees come from the committee reference data. Not yet implemented: amendment events (`AMENDMENT_OFFERED`, `AMENDMENT_ADOPTED`).
+
+Roll-call votes are stored as `VOTE.*` records with one position per member, not as bill events. Scoring reads them for per-vote points (Scoring §7.1) and floor participation (Scoring §4.1).
 
 `COMMITTEE_DISCHARGED` is usually routine (a secondary committee released so the bill can move). Discharge petitions, the procedural override in §8.3, are `DISCHARGE_PETITION_FILED`.
 

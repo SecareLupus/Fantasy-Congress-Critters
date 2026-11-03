@@ -5,11 +5,14 @@ from . import db, download, legislators
 from .billstatus import iter_zip
 from .config import BILL_TYPES
 from .normalize import normalize_bill
+from .votes import iter_house_votes, parse_voteview_senate
 
 
 def cmd_download(args) -> None:
     download.download_billstatus(args.congress, force=args.force)
     download.download_legislators(force=args.force)
+    download.download_house_votes(args.congress, force=args.force)
+    download.download_senate_votes(args.congress, force=args.force)
 
 
 def cmd_load(args) -> None:
@@ -26,6 +29,24 @@ def cmd_load(args) -> None:
                 n_events += len(events)
             conn.commit()
             print(f"{bill_type}: {count} bills, {n_events} events ({time.time() - start:.1f}s)")
+        for session in (1, 2):
+            start, count, n_members = time.time(), 0, 0
+            for rc in iter_house_votes(download.house_votes_dir(args.congress, session)):
+                db.save_roll_call(conn, rc)
+                count += 1
+                n_members += len(rc.members)
+            conn.commit()
+            print(f"house votes {args.congress}-{session}: {count} roll calls, "
+                  f"{n_members} positions ({time.time() - start:.1f}s)")
+        start = time.time()
+        senate = parse_voteview_senate(
+            *(download.voteview_path(args.congress, kind) for kind in download.VOTEVIEW_KINDS)
+        )
+        for rc in senate:
+            db.save_roll_call(conn, rc)
+        conn.commit()
+        print(f"senate votes {args.congress}: {len(senate)} roll calls, "
+              f"{sum(len(rc.members) for rc in senate)} positions ({time.time() - start:.1f}s)")
 
 
 def main() -> None:
