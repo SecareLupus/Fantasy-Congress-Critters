@@ -4,7 +4,9 @@
 
 - Define numeric values for scoring placeholders (`[TIER_*_BASE_VALUE]`, `{PTS_*}`)
 - Complete budgeting across legislative years in Section 6: cross-year mechanics, carryover rules, and caps
-- Specify pricing formulas for session costs, candidate odds-based pricing, and reelection premiums
+- [x] Specify pricing formulas for session costs and re-election premiums (candidate odds-based pricing still deferred)
+- Decide mid-session repricing for new purchases (how a critter's Session Cost moves once the session is under way)
+- Turn the pricing backtest into code: a `critters price` command with the constants in the ruleset
 - [x] Finalize committee prestige tier mapping (House and Senate) and base values
 - [x] Define authorship multipliers and dilution curve shape/parameters
 - Quantify anti-exploit caps, decay rates, and cooldown durations
@@ -15,15 +17,15 @@
 - Add concrete normalization mappings for action text parsing, including edge cases,
 - Specify ruleset versioning and governance (approval, freezing, deprecation)
 - Define multi-ownership discount schedule and guardrails (deferred; flat price at launch)
-- Set Standard league settings: roster size/slots, win condition, starting budget, drop cost
+- Set Standard league settings: roster size/slots, win condition (starting budget $50,000 and drop cost = signing fee are set)
 - [x] Decide who scores bill committee and floor scheduling actions (sponsor/co-sponsors only)
 - [x] Set authorship stage cutoffs
 
 ## Suggested next steps
 
 1) Lock scoring constants: set numeric values for action points, tier bases, authorship multipliers, and dilution curve parameters (PARTIALLY DONE: multipliers and tiers set)
-2) Finish budget rules: annual budget amounts, rollover policy, and penalties/caps
-3) Specify pricing formulas: session cost equation, odds-based candidate pricing, and reelection premiums
+2) Finish budget rules: annual budget amounts, rollover policy, and penalties/caps (annual amount DONE)
+3) Specify pricing formulas: session cost equation, odds-based candidate pricing, and reelection premiums (session cost and re-election DONE; candidates deferred)
 4) Finalize committee tier map: explicit committee-to-tier list for both chambers (DONE)
 5) Define anti-exploit parameters: caps, cooldowns, and diminishing-return formulas
 6) Pin data sources and schemas: canonical APIs, odds source, update cadence/latency

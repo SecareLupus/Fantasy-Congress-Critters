@@ -28,6 +28,8 @@ For each data domain, the game designates **one canonical source of record**. On
 
 **Past committee rosters:** the official sources publish current rosters only. Rosters for past sessions (backtests) are rebuilt from the commit history of the congress-legislators membership file, which is scraped from those official sources. Snapshots are sparse (20 days across the 118th Congress), so seat changes are dated when a snapshot shows them, weeks after the real change. Departures and mid-session arrivals use exact term dates. A live season should record the official rosters daily so dates are exact.
 
+**Fundraising:** the pricing backtest uses two FEC bulk files, which carry the same figures as OpenFEC. The all-candidates summary (`weball24.zip`, total receipts per candidate for the two-year cycle) drives the donations modifier. Committee-to-candidate transactions (`pas224.zip`: contributions, in-kind gifts, and independent expenditures for or against a named candidate) set the price scale. Transactions repeated by amended reports are counted once, from the latest filing. Candidates are matched to critters through the FEC ids in congress-legislators, and every candidacy counts. A House member running for the Senate is priced on both campaigns (Ruben Gallego: $129M). Two members (Glenn Ivey, Keith Self) don't appear in the 2024 file under their ids or their names, so they show $0 and take the lowest donations percentile. This needs a check against OpenFEC before live pricing.
+
 The open-data `unitedstates/congress-legislators` dataset is the **secondary** source for the identifier crosswalk (bioguide, GovTrack, FEC, Wikidata) and for cross-checking memberships.
 
 **Rule:**
