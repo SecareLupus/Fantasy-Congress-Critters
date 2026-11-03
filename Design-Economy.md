@@ -24,6 +24,8 @@ Timing modifiers apply:
 
 Each critter has a **Session Cost**.
 
+Every seated member of the House or Senate can be purchased, including the five delegates and Puerto Rico's Resident Commissioner. They serve on committees, introduce and co-sponsor bills, and vote in the Committee of the Whole, though not on final passage; Scoring §10 values their votes accordingly.
+
 * Session Cost defines the total price for owning the critter for the full session
 * At purchase, the full Session Cost (pro-rated if bought mid-session) is **reserved** from the player's budget. Available balance = budget − reserved, so a player can never be overdrawn.
 * Reserved cost is **charged periodically** (e.g., weekly or monthly). Periodic charging only matters for releasing the unspent remainder when ownership ends early.

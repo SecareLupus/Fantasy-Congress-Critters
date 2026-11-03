@@ -19,6 +19,9 @@ from datetime import date
 from pathlib import Path
 
 CAST = {"yea", "nay", "present", "other"}
+# Delegates and the Resident Commissioner: House members who vote only in the Committee
+# of the Whole, not on final passage.
+NON_VOTING_STATES = {"DC", "PR", "GU", "VI", "AS", "MP"}
 FULL_COMMITTEE_SUFFIX = "00"
 
 
@@ -287,7 +290,9 @@ class VoteRow:
 
 
 def score_votes(votes: Iterable[VoteRow], ruleset: Ruleset, sessions: list[Session],
-                seated: Callable[[str, date], bool]) -> list[ScoreItem]:
+                seated: Callable[[str, date], bool], delegates: frozenset[str] = frozenset()) -> list[ScoreItem]:
+    """A vote cast is worth a session's full-attendance value over the roll calls the member
+    could cast: House, Senate, or for delegates the Committee of the Whole roll calls."""
     rules = ruleset.raw["votes"]
     scale = ruleset.raw["productivity"]["scale"]
     items = []
@@ -301,6 +306,8 @@ def score_votes(votes: Iterable[VoteRow], ruleset: Ruleset, sessions: list[Sessi
                              v.vote_date, points * scale, vote_id=v.vote_id)
 
         chamber = "rep" if v.vote_id.split("-")[1].startswith("h") else "sen"
+        if chamber == "rep" and v.bioguide_id in delegates:
+            chamber = "delegate"
         items.append(item("VOTE_CAST", rules["full_attendance"] / rules["expected_roll_calls"][chamber]))
         if v.question == "On the Nomination":
             if rules["confirmation"]:

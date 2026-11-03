@@ -259,3 +259,11 @@ def score_report(conn: psycopg.Connection, run_id: int) -> dict:
         JOIN critters c USING (bioguide_id) WHERE n <= 10 ORDER BY 1, n""", args).fetchall()
     return {"balance": balance, "even_scale": even_scale, "chamber_medians": chamber_medians,
             "composition": composition, "top": top}
+
+
+def delegates(conn: psycopg.Connection) -> frozenset[str]:
+    """Members who have served as a delegate or the Resident Commissioner."""
+    from .scoring import NON_VOTING_STATES
+    return frozenset(row[0] for row in conn.execute(
+        "SELECT DISTINCT bioguide_id FROM critter_terms WHERE term_type = 'rep' AND state = ANY(%s)",
+        (list(NON_VOTING_STATES),)))

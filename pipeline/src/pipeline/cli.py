@@ -88,7 +88,7 @@ def score_congress(conn, congress: int, ruleset: scoring.Ruleset) -> tuple[int, 
     for bill in bills:
         items.extend(scoring.score_bill(bill, ruleset, sessions, on_committee))
     scoring.apply_caps(items, ruleset)
-    items.extend(scoring.score_votes(votes, ruleset, sessions, seated))
+    items.extend(scoring.score_votes(votes, ruleset, sessions, seated, db.delegates(conn)))
 
     def chamber_of(bioguide: str, day) -> str:
         return "sen" if any(a <= day <= b for a, b in terms.get((bioguide, "sen"), [])) else "rep"
