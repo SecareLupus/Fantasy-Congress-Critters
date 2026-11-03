@@ -25,7 +25,7 @@ Raw files land in `data/raw/` (gitignored). `load` is idempotent: each bill and 
 
 | Data | Source |
 | --- | --- |
-| Bills, actions, co-sponsors, committee activity | GovInfo `BILLSTATUS` bulk XML |
+| Bills, actions, co-sponsors, committee activity, amendments | GovInfo `BILLSTATUS` bulk XML |
 | Members, terms, ID crosswalk, committee names | `unitedstates/congress-legislators` |
 | Committee rosters over time | Every commit of `committee-membership-current.yaml` in `congress-legislators` during the Congress |
 | House roll-call votes | House Clerk XML, one file per roll call (`clerk.house.gov/evs/{year}/roll{NNN}.xml`) |
@@ -34,10 +34,11 @@ Raw files land in `data/raw/` (gitignored). `load` is idempotent: each bill and 
 ## Tables
 
 - `bills`, `bill_cosponsors`, `bill_committee_activities`, `bill_actions`: source records, lightly structured.
+- `amendments`, `amendment_cosponsors`, `amendment_actions`: floor amendments to each bill, from the same BILLSTATUS file.
 - `events`: normalized ontology events, the only input the scoring engine reads. Events are facts about a bill; who earns credit is decided by the engine.
 - `committee_memberships`: who held which committee or subcommittee seat and role (`member`, `chair`, `ranking_member`, `vice_chair`, `ex_officio`) over which dates. `end_date` is exclusive. `first_seen`/`last_seen` are the snapshot dates behind each row.
 - `roll_calls`, `member_votes`: one row per roll call and one per member position. Positions are normalized to `yea`, `nay`, `present`, `not_voting`, or `other` (Speaker elections record a name); the raw text is kept. Votes are not bill events: the scoring engine reads them directly for per-vote points and floor participation.
-- `roll_call_actions` (view): bill actions that cite a roll call, from BILLSTATUS, for "what did this vote do".
+- `roll_call_actions` (view): bill and amendment actions that cite a roll call, from BILLSTATUS, for "what did this vote do".
 - `critters`, `critter_terms`, `committees`: reference data.
 
 ## Normalization notes
@@ -50,7 +51,9 @@ Raw files land in `data/raw/` (gitignored). `load` is idempotent: each bill and 
 - A roll call's `bill_id` is the measure named in the chamber's record. Rule votes point at the rule (H.Res), not the bill it governs; use `roll_call_actions` to reach the governed bill.
 - Delegates and the Resident Commissioner appear on Committee of the Whole votes (mostly amendments), so those roll calls list up to 441 members. The Clerk gives them state `XX`; it is stored as null.
 - Positions are recorded as the Clerk lists them, including one for a member who died before the Congress began (A. Donald McEachin, roll 1 of 2023). Scoring should count only members seated on the vote date (`critter_terms`).
-- Amendment roll calls (about 550 in the 118th) are not cited by bill actions; BILLSTATUS links them from amendment records, which are not parsed yet.
+- Amendment roll calls are cited by amendment actions, not bill actions; `roll_call_actions` covers both.
+- Amendment events come from Library of Congress codes on amendment actions. A Senate amendment is offered when proposed on the floor (93000), not when submitted (91000); in the 118th, 281 of 3,359 were proposed. Each amendment gets at most one offered event and one result, its final outcome. Same-day actions are not reliably ordered in the feed, so results are ordered by the roll call quoted in their text: an amendment that failed on a tie and passed on a re-vote is adopted.
+- Committee-sponsored House amendments (the Rules Committee's self-executing amendments) have no member sponsor; their events have no `critter_id`.
 - Past the last roll call of a year the Clerk returns 200 with a short error document, not 404; the downloader stops at the first file that isn't a roll call.
 - Voteview numbers Senate roll calls across the whole Congress; `roll_number` stores the Senate's own per-session number (`clerk_rollnumber`). Voteview also records the President's position on some votes; it is skipped. Paired and announced positions were not cast and are stored as `not_voting`, with the stated side in `raw_position`.
 - Committee rosters for past sessions come from snapshots of the congress-legislators roster file, which only covers current rosters. Only 20 snapshot days cover the 118th, so a seat or role change is dated by the snapshot that first shows it, often weeks late. For example, Cole is recorded as Appropriations chair from 2024-05-01, though he took over around 2024-04-10. Seats in the first snapshot (2023-02-17) are backdated to the start of the Congress. Seats are clipped to the member's term dates, so deaths and resignations are exact. A member sworn in between snapshots holds their seats from their first day.

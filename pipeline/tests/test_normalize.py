@@ -86,3 +86,42 @@ def test_cloture_not_invoked_is_not_an_invocation(events):
 def test_events_are_unique(events):
     keys = [e.key for e in events]
     assert len(keys) == len(set(keys))
+
+
+def amendment_events(events, amendment_id):
+    return {e.event_type: e for e in events if e.amendment_id == amendment_id}
+
+
+def test_parse_amendments(bill):
+    by_id = {a.amendment_id: a for a in bill.amendments}
+    assert set(by_id) == {"118-hamdt-235", "118-hamdt-12", "118-samdt-2041", "118-samdt-2050"}
+    senate = by_id["118-samdt-2041"]
+    assert (senate.chamber, senate.sponsor_id, senate.on_behalf_of_id) == ("Senate", "S000148", "C000127")
+    assert senate.amended_amendment_id == "118-samdt-2040"
+    assert [c.bioguide_id for c in senate.cosponsors] == ["W000790"]
+    assert [a.action_code for a in senate.actions] == ["91000", "93000", "94000"]
+    rules = by_id["118-hamdt-12"]
+    assert (rules.sponsor_id, rules.sponsor_name) == (None, "Rules Committee")
+
+
+def test_revoted_amendment_takes_the_later_roll_call(events):
+    # Failed 216-216 on roll 311, then agreed to 214-213 on roll 312, listed out of order.
+    by_type = amendment_events(events, "118-hamdt-235")
+    assert set(by_type) == {"AMENDMENT_OFFERED", "AMENDMENT_ADOPTED"}
+    assert by_type["AMENDMENT_ADOPTED"].critter_id == "N000190"
+
+
+def test_senate_amendment_is_offered_when_proposed_and_credits_the_sponsor(events):
+    by_type = amendment_events(events, "118-samdt-2041")
+    assert by_type["AMENDMENT_OFFERED"].event_date == date(2023, 11, 21)
+    assert by_type["AMENDMENT_ADOPTED"].critter_id == "S000148"
+    assert by_type["AMENDMENT_ADOPTED"].chamber == "Senate"
+
+
+def test_submitted_only_senate_amendment_has_no_events(events):
+    assert amendment_events(events, "118-samdt-2050") == {}
+
+
+def test_committee_amendment_has_no_critter(events):
+    [adopted] = amendment_events(events, "118-hamdt-12").values()
+    assert (adopted.event_type, adopted.critter_id) == ("AMENDMENT_ADOPTED", None)

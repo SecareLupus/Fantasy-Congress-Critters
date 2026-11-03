@@ -76,8 +76,9 @@ All raw data is normalized into an **internal event ontology** before scoring. T
 | Floor | `FLOOR_CONSIDERATION`, `PASSED_CHAMBER`, `FAILED_PASSAGE` |
 | Bicameral | `CONFERENCE_APPOINTED`, `CONFERENCE_REPORT_AGREED`, `RESOLVED_DIFFERENCES` |
 | Presidential | `PRESENTED_TO_PRESIDENT`, `VETOED`, `VETO_OVERRIDE_PASSED`, `VETO_OVERRIDE_FAILED`, `BECAME_LAW` |
+| Amendment | `AMENDMENT_OFFERED`, `AMENDMENT_ADOPTED`, `AMENDMENT_FAILED` (carry the amendment and its sponsor) |
 
-Committee events carry the committee or subcommittee code; parent committees come from the committee reference data. Not yet implemented: amendment events (`AMENDMENT_OFFERED`, `AMENDMENT_ADOPTED`).
+Committee events carry the committee or subcommittee code; parent committees come from the committee reference data. An amendment has at most one offered event and one result, its final outcome.
 
 Roll-call votes are stored as `VOTE.*` records with one position per member, not as bill events. Scoring reads them for per-vote points (Scoring §7.1) and floor participation (Scoring §4.1).
 

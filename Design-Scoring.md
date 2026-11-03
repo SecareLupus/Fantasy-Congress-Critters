@@ -793,9 +793,9 @@ All actions in this section score only for the bill's sponsor and co-sponsors at
 
 * **Committee-Gated:** No
 
-* **Score:** `{PTS_AMENDMENT_OFFERED}`
+* **Score:** `{PTS_AMENDMENT_OFFERED}`, to the amendment's sponsor
 
-* **Data mapping:** `actions[].text` contains "Amendment"
+* **Data mapping:** `AMENDMENT_OFFERED`. A House amendment is offered on the floor; a Senate amendment counts only when it is proposed on the floor, not when it is merely submitted (filed). Most Senate amendments are filed and never brought up.
 
 ---
 
@@ -807,13 +807,17 @@ All actions in this section score only for the bill's sponsor and co-sponsors at
 
 * **Committee-Gated:** No
 
-* **Score:** `{PTS_AMENDMENT_PASSED}`
+* **Score:** `{PTS_AMENDMENT_PASSED}`, to the amendment's sponsor
+
+* **Data mapping:** `AMENDMENT_ADOPTED`, the amendment's final outcome
 
 ---
 
 ### 4.4 Amendment Rejected
 
-* **Score:** `{PTS_AMENDMENT_FAILED}`
+* **Score:** `{PTS_AMENDMENT_FAILED}`, to the amendment's sponsor
+
+* **Data mapping:** `AMENDMENT_FAILED`, the amendment's final outcome
 
 ---
 
