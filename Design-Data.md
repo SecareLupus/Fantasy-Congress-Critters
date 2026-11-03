@@ -19,12 +19,14 @@ For each data domain, the game designates **one canonical source of record**. On
 | Committees & memberships         | House Clerk member data; Senate committee membership data (current); congress-legislators history (past, see note) | Jurisdiction, gating, power     |
 | Roll-call votes                  | House Clerk roll-call data; Senate: Voteview (see note)        | Participation & voting          |
 | Committee schedules & hearings   | House: docs.house.gov Committee Repository; Senate: senate.gov committee hearing schedule | Hearings, markups, oversight |
-| Committee recorded votes         | House: docs.house.gov Committee Repository; Senate: **gap**  | Committee participation multiplier |
+| Committee recorded votes         | **Gap** (House: PDFs only, see note; Senate: not published consistently) | Committee participation multiplier |
 | Fundraising & donations          | OpenFEC API                                                   | Draft pricing inputs            |
 | Elections & incumbency           | House Clerk and Senate member data (seating)                  | Seating, term status            |
 | Election odds                    | **Gap** (deferred with candidate drafting)                    | Candidate & future pricing      |
 
 **Senate roll calls:** senate.gov blocks automated downloads, so Senate votes come from [Voteview](https://voteview.com) (UCLA), an open dataset built from the official record. Its tallies are checked against the Senate's own vote counts in Congress.gov bill actions. The Senate's own feed can replace it if it becomes reachable; more canonical sources can be added per domain where that makes sense.
+
+**House committee votes:** docs.house.gov publishes each committee roll call as a separate PDF, linked from the meeting's page (file names like `CRPT-118-IF14-Vote001-20230308.pdf`; document type `CV` in the meeting XML). There is no structured feed. A survey of the 118th found about 1,500 such PDFs, and the layout differs by committee: some mark votes with X, x, y, 1 or ✓ in Yea/Nay/Present columns, and members appear as "Rep. Guthrie", "MR. JORDAN (OH)", "Mr. Graves of MO" or "Jim Baird, Indiana". About half the committees post text PDFs; the rest post scanned images (Financial Services, Judiciary, Small Business, Veterans' Affairs) or text that extracts garbled (Education and Workforce). Parsing them would need a reader per committee plus OCR, so committee seats use floor participation for now. Revisit if a structured source appears (e.g. a Congress.gov API endpoint for committee votes).
 
 **Past committee rosters:** the official sources publish current rosters only. Rosters for past sessions (backtests) are rebuilt from the commit history of the congress-legislators membership file, which is scraped from those official sources. Snapshots are sparse (20 days across the 118th Congress), so seat changes are dated when a snapshot shows them, weeks after the real change. Departures and mid-session arrivals use exact term dates. A live season should record the official rosters daily so dates are exact.
 

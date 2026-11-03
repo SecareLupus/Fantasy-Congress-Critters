@@ -1002,7 +1002,7 @@ The scoring engine (`pipeline/src/pipeline/scoring.py`) reads every constant fro
 
 ## 11. Open Design Questions (For Next Iteration)
 
-* Committee vote data: House committee votes are published (docs.house.gov) but not yet loaded; Senate committees don't publish recorded votes consistently. Until then, committee seats use floor participation.
+* Committee vote data: House committee votes exist only as per-committee PDFs, about half of them scans (Design-Data §10.1), and Senate committees don't publish recorded votes consistently. Committee seats use floor participation until a structured source appears.
 * Amendment vs standalone bill weighting
 * Handling multi-year bills
 * Scoring vetoes and executive interaction
