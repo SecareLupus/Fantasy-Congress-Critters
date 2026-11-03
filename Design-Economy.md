@@ -58,23 +58,23 @@ Rules:
 
 **Market multiplier**, clamped to 0.75–1.25:
 
-* **Donations:** −15% to +15%, by the critter's percentile of total receipts for the election cycle (FEC candidate summary), ranked against members of the same chamber who are, or are not, up for election
+* **Donations:** −15% to +15%, by the critter's percentile of total receipts in the last FEC cycle complete when the session opens (FEC candidate summary), ranked against members of the same chamber who are, or are not, up for election. A critter with no receipts on record (appointed, or elected after that cycle) ranks at the median.
 * **Up for re-election this session:** +5%
 
 **Price per point:** $14. This sets the median critter at $5,000 a session: two median backers' worth, since the median interest group gives a member it backs $2,500 a year (see Calibration).
 
-Mid-session repricing for new purchases is open (see TODO).
+Mid-session repricing for new purchases is open (see TODO). `critters price` computes Session Costs from a scoring run with the constants in the ruleset's `[pricing]` section.
 
 #### Calibration (118th Congress backtest)
 
-Pricing the 2024 session from 2023 data:
+Pricing the 2024 session from what was known on Jan 3, 2024 (2023 scores, seats held that day, the 2022 FEC cycle):
 
 * The scale comes from FEC records of committee money to sitting members (PACs, leadership PACs and other committees, 2023–24). In each session year, the median committee gave a member it backed $2,500, in both chambers (quartiles $1,000–5,000). The median House member had about 130 such backers a year and the median senator about 70. Super PAC spending for a median member was $0–1,040 a year: outside money lands on a few competitive races, not on the typical critter. Legal contribution limits play no part in the anchor; it is what interests actually put in.
-* Prices run from $1,330 to $12,290: median $5,000, 75th percentile $6,080.
-* Price tracks 2024 points at r = 0.78. Last session's points alone track at r = 0.81 (power alone 0.94), so the multiplier gives up a little accuracy on purpose. Mispriced critters are where players find an edge.
-* Donations barely track points: r = 0.20 between log receipts and 2024 points in the House, 0.02 in the Senate. Senate receipts mostly show who was up for election (class 1 median $10.6M; classes 2 and 3, $2–3M).
+* Prices run from $1,350 to $12,260: median $4,990, 75th percentile $5,970.
+* Price tracks 2024 points at r = 0.75. The projection alone tracks at 0.78, and last session's points alone at 0.81 (power alone 0.94), so the multiplier gives up some accuracy on purpose. Mispriced critters are where players find an edge.
+* Donations barely track points: r = 0.20 between log 2024-cycle receipts and 2024 points in the House, 0.02 in the Senate. Senate receipts mostly show who was up for election (class 1 median $10.6M; classes 2 and 3, $2–3M).
 * Being up for re-election does not change in-session scoring: the median senator's 2024/2023 points ratio was 1.06 in class 1 and 1.05–1.07 in classes 2 and 3. The +5% is a demand lever, not a forecast.
-* Best value in 2024: Padilla (125 points per $1,000), Moylan, Cornyn, Peters (109). Worst: Clyburn (25), Granger (30), Pelosi (36). Critters who resigned (Gallagher, Buck, Gaetz) cost less than their price, because weekly charges stop.
+* Best value in 2024: Cornyn (125 points per $1,000 charged), Lawler (122), Peters (119). Worst: Clyburn (23), Granger (28), McHenry (35). Critters who resigned (Gallagher, Buck, Gaetz) cost less than their price, because weekly charges stop.
 
 ---
 
@@ -115,7 +115,7 @@ Rules:
 ### 6.1 Annual Budgets
 
 * Budgets are allocated **per legislative year**
-* The Standard budget is **$50,000** per legislative year, about 8 × the 75th-percentile Session Cost. An average 8-critter roster fits with room to spare. A roster can hold about three stars ($8,850–12,290) only if the rest comes from the cheaper tier. In the 2024 backtest, the 8 top scorers together cost $71,460, and the best roster $50,000 could have bought with hindsight scored 5,411 points, against about 2,800 for a roster of median critters.
+* The Standard budget is **$50,000** per legislative year, about 8 × the 75th-percentile Session Cost. An average 8-critter roster fits with room to spare. A roster can hold about three stars ($8,850–12,260) only if the rest comes from the cheaper tier. In the 2024 backtest, the 8 top scorers together cost $69,710, and the best roster $50,000 could have bought with hindsight scored 5,658 points, against about 2,800 for a roster of median critters.
 * Players must plan across:
 
   * Multiple sessions

@@ -266,3 +266,19 @@ JOIN roll_calls rc
  AND rc.congress = (v->>'congress')::int
  AND rc.session = (v->>'session')::int
  AND rc.roll_number = (v->>'roll_number')::int;
+
+-- Session Costs computed from a scoring run (Design-Economy §5.2).
+CREATE TABLE IF NOT EXISTS critter_prices (
+    run_id                 bigint NOT NULL REFERENCES score_runs ON DELETE CASCADE,
+    session                int NOT NULL,
+    fec_cycle              int NOT NULL,
+    bioguide_id            text NOT NULL,
+    chamber                text NOT NULL,
+    projected_power        double precision NOT NULL,
+    projected_productivity double precision NOT NULL,
+    multiplier             double precision NOT NULL,
+    session_cost           int NOT NULL,
+    signing_fee            double precision NOT NULL,
+    weekly_fee             double precision NOT NULL,
+    PRIMARY KEY (run_id, session, bioguide_id)
+);
