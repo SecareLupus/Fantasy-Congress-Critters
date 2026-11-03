@@ -29,8 +29,10 @@ def load_rosters(conn, congress: int) -> None:
     start, end = download.congress_dates(congress)
     snapshots = rosters.load_snapshots(download.roster_history_dir(congress))
     terms = db.chamber_terms(conn)
+    built = rosters.build_memberships(snapshots, start, end)
+    rosters.backfill_starts(built, rosters.SEATED_BEFORE_LISTED.get(congress, {}))
     memberships = []
-    for m in rosters.build_memberships(snapshots, start, end):
+    for m in built:
         seat_terms = sorted(t for tt in ROSTER_TERM_TYPES[m.seat.committee_code[0]]
                             for t in terms.get((m.seat.bioguide_id, tt), []))
         memberships.extend(rosters.clip_to_terms(m, seat_terms))

@@ -22,7 +22,19 @@ CREATE TABLE IF NOT EXISTS critter_terms (
     state        text NOT NULL,
     district     integer,
     senate_class integer,
-    party        text,
+    party        text,  -- the party at the end of the term; see critter_parties for changes
+    PRIMARY KEY (bioguide_id, start_date)
+);
+
+-- Party over time. One row per term, or one per affiliation when a member switched
+-- mid-term (congress-legislators party_affiliations). end_date is inclusive, and the
+-- day of a switch belongs to the new party. caucus is set when it differs from party.
+CREATE TABLE IF NOT EXISTS critter_parties (
+    bioguide_id text NOT NULL REFERENCES critters ON DELETE CASCADE,
+    start_date  date NOT NULL,
+    end_date    date NOT NULL,
+    party       text,
+    caucus      text,
     PRIMARY KEY (bioguide_id, start_date)
 );
 
