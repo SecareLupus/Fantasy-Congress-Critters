@@ -149,3 +149,96 @@ def add_missing_committees(conn: psycopg.Connection) -> int:
     )
     conn.commit()
     return cur.rowcount
+
+
+def scoring_inputs(conn: psycopg.Connection, congress: int):
+    """Everything the scoring engine reads for one Congress."""
+    from .scoring import BillInputs, Cosponsor, EventRow, Position, VoteRow
+
+    bills = {
+        bill_id: BillInputs(bill_id, bill_type, sponsor, by_request, origin, [], [])
+        for bill_id, bill_type, sponsor, by_request, origin in conn.execute(
+            """SELECT bill_id, bill_type, sponsor_id, sponsor_by_request, origin_chamber
+               FROM bills WHERE congress = %s""", (congress,))
+    }
+    for bill_id, *row in conn.execute(
+        """SELECT c.bill_id, c.bioguide_id, c.sponsorship_date, c.is_original, c.withdrawn_date
+           FROM bill_cosponsors c JOIN bills b USING (bill_id)
+           WHERE b.congress = %s AND c.sponsorship_date IS NOT NULL""", (congress,)):
+        bills[bill_id].cosponsors.append(Cosponsor(*row))
+    for bill_id, *row in conn.execute(
+        """SELECT e.bill_id, e.event_type, e.event_date, e.chamber, e.committee_code,
+                  e.critter_id, e.amendment_id
+           FROM events e JOIN bills b USING (bill_id) WHERE b.congress = %s""", (congress,)):
+        bills[bill_id].events.append(EventRow(*row))
+
+    votes = [VoteRow(*row) for row in conn.execute(
+        """SELECT rc.vote_id, rc.vote_date, rc.question, rc.result, rc.legis_num,
+                  mv.bioguide_id, mv.position
+           FROM member_votes mv JOIN roll_calls rc USING (vote_id)
+           WHERE rc.congress = %s""", (congress,))]
+
+    positions = [Position(*row) for row in conn.execute(
+        """SELECT bioguide_id, 'committee', committee_code, role, start_date, end_date
+           FROM committee_memberships WHERE congress = %s""", (congress,))]
+    leadership = list(conn.execute(
+        """SELECT bioguide_id, title, start_date, end_date FROM critter_leadership"""))
+    return list(bills.values()), votes, positions, leadership
+
+
+def save_score_run(conn: psycopg.Connection, congress: int, ruleset, items) -> int:
+    run_id = conn.execute(
+        "INSERT INTO score_runs (congress, ruleset_version, ruleset) VALUES (%s, %s, %s) RETURNING run_id",
+        (congress, ruleset.version, Jsonb(ruleset.raw)),
+    ).fetchone()[0]
+    with conn.cursor().copy(
+        """COPY score_items (run_id, bioguide_id, session, pillar, category, item_date, points,
+               bill_id, amendment_id, vote_id, committee_code, detail) FROM STDIN"""
+    ) as copy:
+        for i in items:
+            copy.write_row((run_id, i.bioguide_id, i.session, i.pillar, i.category, i.item_date,
+                            i.points, i.bill_id, i.amendment_id, i.vote_id, i.committee_code,
+                            Jsonb(i.detail) if i.detail else None))
+    conn.commit()
+    return run_id
+
+
+def score_report(conn: psycopg.Connection, run_id: int) -> dict:
+    """Balance and composition of a run, over members seated for a whole session."""
+    full_members = """
+        SELECT DISTINCT t.bioguide_id, s.session, t.term_type AS chamber
+        FROM critter_terms t
+        JOIN (SELECT DISTINCT session FROM score_items WHERE run_id = %(run)s) x ON true
+        JOIN LATERAL (SELECT x.session,
+                             make_date(r.congress * 2 + 1787 + x.session - 1, 1, 3) AS a,
+                             make_date(r.congress * 2 + 1787 + x.session, 1, 2) AS b
+                      FROM score_runs r WHERE r.run_id = %(run)s) s ON true
+        WHERE t.start_date <= s.a AND t.end_date >= s.b
+          AND t.state NOT IN ('DC', 'PR', 'GU', 'VI', 'AS', 'MP')"""
+    totals = f"""
+        SELECT f.session, f.chamber, f.bioguide_id,
+               coalesce(sum(i.points) FILTER (WHERE i.pillar = 'power'), 0) AS power,
+               coalesce(sum(i.points) FILTER (WHERE i.pillar = 'productivity'), 0) AS productivity
+        FROM ({full_members}) f
+        LEFT JOIN score_items i ON i.run_id = %(run)s AND i.bioguide_id = f.bioguide_id
+                               AND i.session = f.session
+        GROUP BY 1, 2, 3"""
+    args = {"run": run_id}
+    balance = conn.execute(f"""
+        SELECT session, chamber, count(*),
+               percentile_cont(0.5) WITHIN GROUP (ORDER BY power),
+               percentile_cont(0.5) WITHIN GROUP (ORDER BY productivity),
+               max(power), max(productivity)
+        FROM ({totals}) t GROUP BY 1, 2 ORDER BY 1, 2""", args).fetchall()
+    even_scale = conn.execute(f"""
+        SELECT percentile_cont(0.5) WITHIN GROUP (ORDER BY power / productivity)
+        FROM ({totals}) t WHERE productivity > 0""", args).fetchone()[0]
+    composition = conn.execute("""
+        SELECT pillar, category, sum(points), 100 * sum(points) / sum(sum(points)) OVER (PARTITION BY pillar)
+        FROM score_items WHERE run_id = %(run)s GROUP BY 1, 2 ORDER BY 1, 3 DESC""", args).fetchall()
+    top = conn.execute(f"""
+        SELECT t.session, c.official_full_name, t.chamber, t.power, t.productivity
+        FROM (SELECT *, row_number() OVER (PARTITION BY session ORDER BY power + productivity DESC) AS n
+              FROM ({totals}) t) t
+        JOIN critters c USING (bioguide_id) WHERE n <= 10 ORDER BY 1, n""", args).fetchall()
+    return {"balance": balance, "even_scale": even_scale, "composition": composition, "top": top}

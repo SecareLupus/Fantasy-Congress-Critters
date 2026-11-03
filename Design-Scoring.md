@@ -959,14 +959,52 @@ These rules apply at the **session level** to prevent degenerate strategies that
 
 ---
 
+## 10. Default Ruleset v0.1 (Engine Interpretations)
+
+The scoring engine (`pipeline/src/pipeline/scoring.py`) reads every constant from [`pipeline/rulesets/default.toml`](pipeline/rulesets/default.toml). Where this document left a rule open, v0.1 decides it as follows. All point values are first guesses, calibrated by a backtest on the 118th Congress (`critters score`, `critters report`).
+
+**Who scores an event**
+
+* Introduction: the sponsor, as Author (by-request bills as Procedural).
+* Co-sponsorship: the joining co-sponsor, with the category for the bill's stage on the join date and the dilution share for their rank.
+* Committee actions (referral, hearing, markup, ordered reported, reported, discharged): backers (the sponsor and co-sponsors on the event date, less withdrawn co-sponsors) who sit on the acting committee or its parent committee that day.
+* Discharge petitions, floor scheduling, floor consideration, conference, presentment and veto overrides: all backers on the event date, flat points each.
+* Chamber passage and enactment: all backers, with authorship category and dilution. "Heavily diluted" enactment uses `1 / rank` instead of `1 / rank^0.5`.
+* Amendments: the amendment's sponsor, as Author. Committee-sponsored amendments score no one.
+* A critter scores each action type once per bill per chamber (§9.2); repeated calendar placements or referrals don't add up.
+* Failed passage, failed veto overrides and vetoes score nothing in v0.1.
+
+**Votes**
+
+* Each yea, nay or present vote scores `{PTS_VOTE}` for a member seated that day.
+* Voting yea on a nomination that is confirmed adds `{PTS_CONFIRM_SUCCESS}`. `{PTS_CONFIRM_VOTE}` is 0.
+
+**Power**
+
+* Committee seats: tier base × role. Ex officio seats score nothing (they're courtesy seats, mostly held by leaders scored elsewhere).
+* Subcommittee seats add a bonus on the parent committee's tier base: member +10%, chair +50%, ranking member +25% (the last isn't in the design).
+* Select committees formed at the session start are tiered: the China select committee and the Weaponization and Coronavirus select subcommittees at Tier 2; the Helsinki Commission and the Senate narcotics caucus at Tier 4. Ad hoc task forces are a flat 30.
+* Leadership posts, per session: Speaker 400; floor leaders 300; whips 200; party conference or caucus chairs, President pro tempore and assistant leaders 100; other elected posts 40.
+* Participation: committee seats use floor participation until committee votes are loaded. The Speaker, who by custom rarely votes, is exempt.
+
+**Weights and caps**
+
+* Bill-type weight on every event of a bill: bills and joint resolutions 1.0, concurrent resolutions 0.5, simple resolutions 0.2. Simple resolutions are mostly commemorations and House rules; in the 118th, 709 of the 1,709 measures that passed a chamber were simple resolutions.
+* Per-critter session caps near the 118th's 95th percentile: 50 introductions, 400 co-sponsorships, 40 amendments offered. Items beyond a cap stay in the ledger at zero.
+* One productivity scale multiplies every productivity item. It is set so the median full-session member earns about as much from productivity as from power (0.1 for the 118th).
+
+---
+
 ## 11. Open Design Questions (For Next Iteration)
 
-* Exact numeric point formulas and caps
-* Committee vote data availability: Senate committees do not publish recorded votes consistently; a fallback for the committee participation multiplier is needed
+* Committee vote data: House committee votes are published (docs.house.gov) but not yet loaded; Senate committees don't publish recorded votes consistently. Until then, committee seats use floor participation.
+* Chamber balance: with one productivity scale, the median House member is even (165 power, 176 productivity in 2023) but the median senator is power-heavy (386 power, 203 productivity), because senators hold three or four committees. Senators take every top-10 spot.
+* Ceremonial laws: post office namings and similar bills score like substantive laws. A senator sponsoring several earns as much from each as from a major bill.
+* Vote weight: floor votes are about 27% of productivity in v0.1.
+* Delegates: whether delegates and the Resident Commissioner can be drafted. They vote only in the Committee of the Whole.
 * Amendment vs standalone bill weighting
 * Handling multi-year bills
 * Scoring vetoes and executive interaction
-* Anti-exploit safeguards
 
 ---
 

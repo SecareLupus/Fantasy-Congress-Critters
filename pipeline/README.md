@@ -16,6 +16,8 @@ Then, from `pipeline/`:
 uv sync
 uv run critters download --congress 118
 uv run critters load --congress 118
+uv run critters score --congress 118   # score with rulesets/default.toml
+uv run critters report                 # balance and composition of the latest run
 uv run pytest
 ```
 
@@ -39,7 +41,13 @@ Raw files land in `data/raw/` (gitignored). `load` is idempotent: each bill and 
 - `committee_memberships`: who held which committee or subcommittee seat and role (`member`, `chair`, `ranking_member`, `vice_chair`, `ex_officio`) over which dates. `end_date` is exclusive. `first_seen`/`last_seen` are the snapshot dates behind each row.
 - `roll_calls`, `member_votes`: one row per roll call and one per member position. Positions are normalized to `yea`, `nay`, `present`, `not_voting`, or `other` (Speaker elections record a name); the raw text is kept. Votes are not bill events: the scoring engine reads them directly for per-vote points and floor participation.
 - `roll_call_actions` (view): bill and amendment actions that cite a roll call, from BILLSTATUS, for "what did this vote do".
+- `critter_leadership`: chamber and party leadership posts (Speaker, floor leaders, whips, conference posts).
+- `score_runs`, `score_items`: one run per scoring of a Congress with a ruleset, and one item per point-earning fact: an event credit, a vote, or a position held in a session. Each item records its pillar (power or productivity), category, date, source (bill, amendment, vote, or committee), and the factors behind its points.
 - `critters`, `critter_terms`, `committees`: reference data.
+
+## Scoring
+
+`critters score` runs the engine in `scoring.py` against a ruleset (default `rulesets/default.toml`) and saves a run. Every constant lives in the ruleset; Design-Scoring §10 lists how v0.1 interprets the open rules. `critters report` prints the median power and productivity of members seated for a whole session, the productivity scale that would make the median member even, the point composition by category, and the top ten critters per session.
 
 ## Normalization notes
 
