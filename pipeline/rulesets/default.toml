@@ -195,6 +195,9 @@ confirmation_success = 1.0  # extra, voting yea on a nomination that is confirme
 [votes.expected_roll_calls]  # per session; 118th Congress averages
 rep = 620
 sen = 345
+# Delegates and the Resident Commissioner vote only in the Committee of the Whole
+# (394 roll calls in 2023, 144 in 2024).
+delegate = 270
 
 # Positional points by the holder's chamber. Senators hold about twice as many seats
 # (median 4 committees and 9 subcommittees against 2 and 4 in the House), so their

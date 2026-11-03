@@ -213,6 +213,13 @@ def test_perfect_attendance_is_worth_the_same_in_both_chambers(ruleset):
     assert senate.points * rules["expected_roll_calls"]["sen"] == pytest.approx(rules["full_attendance"])
 
 
+def test_delegate_votes_are_valued_against_committee_of_the_whole_roll_calls(ruleset):
+    rules = ruleset.raw["votes"]
+    [delegate] = score_votes([vote("yea", who="NORTON", vote_id="118-h1-1")], ruleset, SESSIONS,
+                             lambda *_: True, delegates=frozenset({"NORTON"}))
+    assert delegate.points * rules["expected_roll_calls"]["delegate"] == pytest.approx(rules["full_attendance"])
+
+
 def test_yea_on_a_confirmed_nomination_scores_extra(ruleset):
     votes = [vote("yea", "On the Nomination", "Nomination Confirmed"),
              vote("nay", "On the Nomination", "Nomination Confirmed", who="Y")]

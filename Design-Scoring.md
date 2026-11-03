@@ -977,6 +977,7 @@ The scoring engine (`pipeline/src/pipeline/scoring.py`) reads every constant fro
 **Votes**
 
 * Each yea, nay or present vote scores for a member seated that day. A vote is worth a session's full-attendance value divided by the chamber's expected roll calls (620 House, 345 Senate, the 118th's averages), so perfect attendance is worth the same in both chambers, about 30 points a session, although the House holds about twice as many roll calls. Votes are about a fifth of the median member's productivity (21% House, 18% Senate in 2023). In a year with more or fewer roll calls than expected, full attendance is worth proportionally more or less.
+* Delegates and the Resident Commissioner vote only in the Committee of the Whole, so their votes are valued against those roll calls (270 expected a session; 394 in 2023, 144 in 2024). Perfect attendance is worth the same to them as to any member. Otherwise they score as House members.
 * Voting yea on a nomination that is confirmed adds `{PTS_CONFIRM_SUCCESS}`. `{PTS_CONFIRM_VOTE}` is 0.
 
 **Power**
@@ -1002,7 +1003,6 @@ The scoring engine (`pipeline/src/pipeline/scoring.py`) reads every constant fro
 ## 11. Open Design Questions (For Next Iteration)
 
 * Committee vote data: House committee votes are published (docs.house.gov) but not yet loaded; Senate committees don't publish recorded votes consistently. Until then, committee seats use floor participation.
-* Delegates: whether delegates and the Resident Commissioner can be drafted. They vote only in the Committee of the Whole.
 * Amendment vs standalone bill weighting
 * Handling multi-year bills
 * Scoring vetoes and executive interaction
