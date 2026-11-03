@@ -12,6 +12,8 @@ commits. A snapshot is dated by its commit, which can trail the real change by w
   have exact dates, so deaths and resignations are not lagged. A member who joined the
   chamber between the previous snapshot and the one where the seat appears (a special
   election or appointment) holds it from their first day.
+- A committee the file listed only long after its members were seated (SEATED_BEFORE_LISTED)
+  has its first listed seats start on the day they were filled.
 """
 
 import re
@@ -33,6 +35,16 @@ ROLES = {
     "ex officio": "ex_officio",
 }
 SNAPSHOT_NAME = re.compile(r"^(\d{8})T\d{6}_")
+
+# Congress -> committee -> the day its members were named, for committees that
+# congress-legislators added to the roster file months after they were seated.
+SEATED_BEFORE_LISTED = {
+    118: {
+        # Task Force on the Attempted Assassination of Donald J. Trump: created by
+        # H.Res. 1367 on 2024-07-24, members named 2024-07-29, first listed 2024-12-17.
+        "hszt00": date(2024, 7, 29),
+    },
+}
 
 
 @dataclass(frozen=True)
@@ -105,6 +117,18 @@ def build_memberships(snapshots: list[tuple[date, set[Seat]]], congress_start: d
                 open_[seat] = Membership(seat, start, congress_end, day, day, previous)
     memberships.extend(open_.values())
     return memberships
+
+
+def backfill_starts(memberships: list[Membership], seated: dict[str, date]) -> None:
+    """Start a late-listed committee's first listed seats on the day they were filled."""
+    first_listed: dict[str, date] = {}
+    for m in memberships:
+        code = m.seat.committee_code
+        first_listed[code] = min(first_listed.get(code, m.first_seen), m.first_seen)
+    for m in memberships:
+        code = m.seat.committee_code
+        if code in seated and m.first_seen == first_listed[code] and seated[code] < m.start_date:
+            m.start_date = m.previous_snapshot = seated[code]
 
 
 def _service(terms: list[tuple[date, date]]) -> list[tuple[date, date]]:

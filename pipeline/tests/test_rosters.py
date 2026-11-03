@@ -2,6 +2,7 @@ from datetime import date
 
 from pipeline.rosters import (
     Seat,
+    backfill_starts,
     build_memberships,
     clip_to_terms,
     committee_code,
@@ -74,3 +75,18 @@ def test_member_seated_before_the_last_empty_snapshot_waits_for_the_snapshot():
     [m] = build_memberships(snapshots, START, END)
     [piece] = clip_to_terms(m, [(date(2023, 11, 7), date(2025, 1, 3))])
     assert piece.start_date == date(2024, 3, 6)
+
+
+def test_late_listed_committee_seats_start_when_filled():
+    named = date(2024, 7, 29)
+    early, late = seat("hszt00", "A000001"), seat("hszt00", "B000002")
+    snapshots = [(date(2023, 2, 17), {seat()}), (date(2024, 11, 14), {seat()}),
+                 (date(2024, 12, 17), {seat(), early}), (date(2024, 12, 20), {seat(), early, late})]
+    memberships = build_memberships(snapshots, START, END)
+    backfill_starts(memberships, {"hszt00": named})
+    starts = {m.seat.bioguide_id: m.start_date for m in memberships if m.seat.committee_code == "hszt00"}
+    assert starts == {"A000001": named, "B000002": date(2024, 12, 20)}
+    [other] = [m for m in memberships if m.seat.committee_code == "hsag00"]
+    assert other.start_date == START
+    [piece] = clip_to_terms(next(m for m in memberships if m.seat == early), [(START, date(2025, 1, 3))])
+    assert piece.start_date == named

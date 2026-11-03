@@ -140,6 +140,15 @@ def chamber_terms(conn: psycopg.Connection) -> dict[tuple[str, str], list]:
     return terms
 
 
+def parties_on(conn: psycopg.Connection, day) -> dict[str, str]:
+    """bioguide_id -> party on a day. On a day two periods share (January 3, when one
+    term ends as the next begins), the later one wins."""
+    return dict(conn.execute(
+        """SELECT DISTINCT ON (bioguide_id) bioguide_id, party FROM critter_parties
+           WHERE start_date <= %(day)s AND end_date >= %(day)s
+           ORDER BY bioguide_id, start_date DESC""", {"day": day}).fetchall())
+
+
 def add_missing_committees(conn: psycopg.Connection) -> int:
     """Committees named in bill activity but absent from the reference data, e.g. hsha06."""
     cur = conn.execute(
