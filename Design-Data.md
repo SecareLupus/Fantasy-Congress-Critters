@@ -28,6 +28,8 @@ For each data domain, the game designates **one canonical source of record**. On
 
 **Past committee rosters:** the official sources publish current rosters only. Rosters for past sessions (backtests) are rebuilt from the commit history of the congress-legislators membership file, which is scraped from those official sources. Snapshots are sparse (20 days across the 118th Congress), so seat changes are dated when a snapshot shows them, weeks after the real change. Departures and mid-session arrivals use exact term dates. A live season should record the official rosters daily so dates are exact.
 
+**Committees listed late:** congress-legislators sometimes adds a committee to its roster file months after the committee is seated. The House Task Force on the Attempted Assassination of Donald J. Trump (`hszt00`) was created by H.Res. 1367 on July 24, 2024 and its 13 members were named on July 29, but the file first lists it on December 17, 2024. Those seats are backfilled to July 29 (`SEATED_BEFORE_LISTED` in `rosters.py`); the 13 members listed in December match the July appointments. Subcommittees have the same problem on a larger scale and are not backfilled: 107 of them first appear in the May 14, 2023 snapshot, after the February and March snapshots, so subcommittee seats from the start of the 118th Congress are dated May 14.
+
 The open-data `unitedstates/congress-legislators` dataset is the **secondary** source for the identifier crosswalk (bioguide, GovTrack, FEC, Wikidata) and for cross-checking memberships.
 
 **Rule:**
