@@ -12,6 +12,7 @@ from pipeline.scoring import (
     Ruleset,
     VoteRow,
     apply_caps,
+    apply_chamber_factor,
     bill_weight,
     coalition_ranks,
     congress_sessions,
@@ -194,14 +195,22 @@ def test_caps_keep_only_the_first_items_of_a_session(ruleset):
 
 # --- votes --------------------------------------------------------------------------
 
-def vote(position, question="On Passage", result="Passed", who="X", day=D(2023, 5, 1)):
-    return VoteRow("118-s1-1", day, question, result, None, who, position)
+def vote(position, question="On Passage", result="Passed", who="X", day=D(2023, 5, 1), vote_id="118-s1-1"):
+    return VoteRow(vote_id, day, question, result, None, who, position)
 
 
 def test_votes_score_when_cast_by_a_seated_member(ruleset):
     votes = [vote("yea"), vote("present"), vote("not_voting"), vote("nay", who="DEPARTED")]
     items = score_votes(votes, ruleset, SESSIONS, lambda who, day: who != "DEPARTED")
-    assert [(i.category, i.points) for i in items] == [("VOTE_CAST", 1.0), ("VOTE_CAST", 1.0)]
+    assert [i.category for i in items] == ["VOTE_CAST", "VOTE_CAST"]
+
+
+def test_perfect_attendance_is_worth_the_same_in_both_chambers(ruleset):
+    rules = ruleset.raw["votes"]
+    [house] = score_votes([vote("yea", vote_id="118-h1-1")], ruleset, SESSIONS, lambda *_: True)
+    [senate] = score_votes([vote("yea", vote_id="118-s1-1")], ruleset, SESSIONS, lambda *_: True)
+    assert house.points * rules["expected_roll_calls"]["rep"] == pytest.approx(rules["full_attendance"])
+    assert senate.points * rules["expected_roll_calls"]["sen"] == pytest.approx(rules["full_attendance"])
 
 
 def test_yea_on_a_confirmed_nomination_scores_extra(ruleset):
@@ -210,6 +219,17 @@ def test_yea_on_a_confirmed_nomination_scores_extra(ruleset):
     items = score_votes(votes, ruleset, SESSIONS, lambda *_: True)
     assert sorted((i.bioguide_id, i.category) for i in items) == [
         ("X", "CONFIRMATION_SUCCESS"), ("X", "VOTE_CAST"), ("Y", "VOTE_CAST")]
+
+
+def test_senate_productivity_factor_spares_votes_and_power(ruleset):
+    from pipeline.scoring import ScoreItem
+    items = [ScoreItem("SEN", 1, "productivity", "PASSED_CHAMBER", D(2023, 5, 1), 10.0, bill_id="118-s-1"),
+             ScoreItem("SEN", 1, "productivity", "VOTE_CAST", D(2023, 5, 1), 1.0, vote_id="118-s1-1"),
+             ScoreItem("SEN", 1, "power", "COMMITTEE_SEAT", D(2023, 5, 1), 50.0),
+             ScoreItem("REP", 1, "productivity", "PASSED_CHAMBER", D(2023, 5, 1), 10.0, bill_id="118-hr-1")]
+    apply_chamber_factor(items, ruleset, lambda who, day: "sen" if who == "SEN" else "rep")
+    factor = ruleset.raw["productivity"]["chamber_factor"]["sen"]
+    assert [i.points for i in items] == [pytest.approx(10.0 * factor), 1.0, 50.0, 10.0]
 
 
 # --- power --------------------------------------------------------------------------

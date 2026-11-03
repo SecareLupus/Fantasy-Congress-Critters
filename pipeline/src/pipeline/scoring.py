@@ -257,6 +257,22 @@ def apply_caps(items: list[ScoreItem], ruleset: Ruleset) -> list[ScoreItem]:
     return items
 
 
+def apply_chamber_factor(items: list[ScoreItem], ruleset: Ruleset,
+                         chamber_of: Callable[[str, date], str]) -> list[ScoreItem]:
+    """Scale productivity by the earner's chamber, so the median senator and the median
+    House member come out alike (power has its own factor in score_positions). Votes are
+    left alone: they are already worth the same per session in both chambers."""
+    factors = ruleset.raw["productivity"]["chamber_factor"]
+    for item in items:
+        if item.pillar != "productivity" or item.vote_id:
+            continue
+        factor = factors.get(chamber_of(item.bioguide_id, item.item_date), 1.0)
+        if factor != 1.0:
+            item.points *= factor
+            item.detail = {**item.detail, "chamber_factor": factor}
+    return items
+
+
 # --- productivity: votes -----------------------------------------------------------
 
 @dataclass
@@ -284,7 +300,8 @@ def score_votes(votes: Iterable[VoteRow], ruleset: Ruleset, sessions: list[Sessi
             return ScoreItem(v.bioguide_id, session.number, "productivity", category,
                              v.vote_date, points * scale, vote_id=v.vote_id)
 
-        items.append(item("VOTE_CAST", rules["cast"]))
+        chamber = "rep" if v.vote_id.split("-")[1].startswith("h") else "sen"
+        items.append(item("VOTE_CAST", rules["full_attendance"] / rules["expected_roll_calls"][chamber]))
         if v.question == "On the Nomination":
             if rules["confirmation"]:
                 items.append(item("CONFIRMATION_VOTE", rules["confirmation"]))
