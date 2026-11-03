@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Trimmed from House Clerk roll call 39 (118th Congress, 1st session); member list cut to five. -->
+<rollcall-vote>
+  <vote-metadata>
+    <majority>R</majority>
+    <congress>118</congress>
+    <session>1st</session>
+    <committee>U.S. House of Representatives</committee>
+    <rollcall-num>39</rollcall-num>
+    <legis-num>H R 21</legis-num>
+    <vote-question>On Agreeing to the Amendment</vote-question>
+    <amendment-num>4</amendment-num>
+    <amendment-author>Castor of Florida Amendment No. 3</amendment-author>
+    <vote-type>RECORDED VOTE</vote-type>
+    <vote-result>Failed</vote-result>
+    <action-date>26-Jan-2023</action-date>
+    <action-time time-etz="17:32">5:32 PM</action-time>
+    <vote-desc></vote-desc>
+  </vote-metadata>
+  <vote-data>
+    <recorded-vote>
+      <legislator name-id="A000370" sort-field="Adams" unaccented-name="Adams" party="D" state="NC" role="legislator">Adams</legislator>
+      <vote>Aye</vote>
+    </recorded-vote>
+    <recorded-vote>
+      <legislator name-id="A000055" sort-field="Aderholt" unaccented-name="Aderholt" party="R" state="AL" role="legislator">Aderholt</legislator>
+      <vote>No</vote>
+    </recorded-vote>
+    <recorded-vote>
+      <legislator name-id="A000371" sort-field="Aguilar" unaccented-name="Aguilar" party="D" state="CA" role="legislator">Aguilar</legislator>
+      <vote>Not Voting</vote>
+    </recorded-vote>
+    <recorded-vote>
+      <legislator name-id="A000372" sort-field="Allen" unaccented-name="Allen" party="R" state="GA" role="legislator">Allen</legislator>
+      <vote>Present</vote>
+    </recorded-vote>
+    <recorded-vote>
+      <legislator name-id="N000147" sort-field="Norton" unaccented-name="Norton" party="D" state="XX" role="legislator">Norton</legislator>
+      <vote>Aye</vote>
+    </recorded-vote>
+  </vote-data>
+</rollcall-vote>

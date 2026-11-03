@@ -1,0 +1,5 @@
+congress,chamber,icpsr,state_icpsr,district_code,state_abbrev,party_code,occupancy,last_means,bioname,bioguide_id,born,died,nominate_dim1,nominate_dim2,nominate_log_likelihood,nominate_geo_mean_probability,nominate_number_of_votes,nominate_number_of_errors,conditional,nokken_poole_dim1,nokken_poole_dim2
+118,President,99913,99,0,USA,100,0,0,"BIDEN, Joseph Robinette (Joe), Jr.",B000444,1942,,-0.32,0.283,,,,,,,
+118,Senate,42102,41,0,AL,200,,,"TUBERVILLE, Thomas Hawley (Tommy)",T000278,1954,,0.936,-0.352,,,,,,,
+118,Senate,29147,6,0,VT,328,,,"SANDERS, Bernard",S000033,1941,,-0.538,-0.393,,,,,,,
+118,Senate,41110,71,0,CA,100,,,"PADILLA, Alex",P000145,1973,,-0.4,-0.2,,,,,,,
