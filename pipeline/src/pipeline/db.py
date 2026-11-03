@@ -270,51 +270,54 @@ def score_report(conn: psycopg.Connection, run_id: int) -> dict:
             "composition": composition, "top": top}
 
 
-def delegates(conn: psycopg.Connection) -> frozenset[str]:
-    """Members who have served as a delegate or the Resident Commissioner."""
-    from .scoring import NON_VOTING_STATES
-    return frozenset(row[0] for row in conn.execute(
-        "SELECT DISTINCT bioguide_id FROM critter_terms WHERE term_type = 'rep' AND state = ANY(%s)",
-        (list(NON_VOTING_STATES),)))
-
-
-def pricing_inputs(conn: psycopg.Connection, run_id: int, session: int, min_days: int) -> list[dict]:
-    """Members seated on the first day of `session`, with what pricing needs from the run:
-    seats held that day, and last session's participation and productivity rate."""
-    if session < 2:
-        raise ValueError("pricing needs the previous session in the same run; price session 2")
+def pricing_inputs(conn: psycopg.Connection, run_id: int, session: int, min_days: int,
+                   prev_run: int | None = None, as_of=None) -> list[dict]:
+    """Members seated on `as_of` (default: the first day of `session`), with what pricing
+    needs: seats held that day (from `run_id`), and last session's participation and
+    productivity rate. A new Congress seats its committees weeks after it convenes, so
+    session 1 is priced as of a later date. Last
+    session is session 1 of the same run, or, for session 1, session 2 of `prev_run`
+    (a run scoring the previous Congress)."""
+    if session == 1 and prev_run is None:
+        raise ValueError("pricing session 1 needs a run of the previous Congress")
+    prev_run, prev_session = (prev_run, 2) if session == 1 else (run_id, session - 1)
     return [dict(zip(("bioguide_id", "chamber", "up_for_election", "fec_ids", "seat_value",
-                      "participation", "productivity_rate", "left_office"), row))
+                      "committee_value", "participation", "productivity_rate", "left_office"), row))
             for row in conn.execute("""
         WITH r AS (SELECT congress FROM score_runs WHERE run_id = %(run)s),
-        s AS (SELECT make_date(congress * 2 + 1787 + %(s)s - 1, 1, 3) AS a,
+        s AS (SELECT coalesce(%(as_of)s::date, make_date(congress * 2 + 1787 + %(s)s - 1, 1, 3)) AS d,
+                     make_date(congress * 2 + 1787 + %(s)s - 1, 1, 3) AS a,
                      make_date(congress * 2 + 1787 + %(s)s, 1, 3) AS b,
                      make_date(congress * 2 + 1787 + %(s)s - 2, 1, 3) AS pa FROM r),
         seated AS (
             SELECT DISTINCT ON (t.bioguide_id) t.bioguide_id, t.term_type, t.end_date
-            FROM critter_terms t, s WHERE t.start_date <= s.a AND t.end_date > s.a
+            FROM critter_terms t, s WHERE t.start_date <= s.d AND t.end_date > s.d
             ORDER BY t.bioguide_id, t.start_date DESC),
         served AS (
             SELECT t.bioguide_id, sum(least(t.end_date, s.a) - greatest(t.start_date, s.pa)) AS days
             FROM critter_terms t, s WHERE t.start_date < s.a AND t.end_date > s.pa GROUP BY 1),
         seats AS (
-            SELECT bioguide_id, sum((detail->>'value')::float) AS value
+            SELECT bioguide_id, sum((detail->>'value')::float) AS value,
+                   coalesce(sum((detail->>'value')::float) FILTER (WHERE category <> 'LEADERSHIP'), 0) AS committee
             FROM score_items, s WHERE run_id = %(run)s AND session = %(s)s AND pillar = 'power'
-              AND item_date = s.a GROUP BY 1),
+              AND item_date <= s.d AND s.d < item_date + (detail->>'days')::int GROUP BY 1),
         prev AS (
             SELECT bioguide_id,
                    sum((detail->>'participation')::float * (detail->>'days')::float)
                        / nullif(sum((detail->>'days')::float), 0) AS participation,
                    sum(points) FILTER (WHERE pillar = 'productivity') AS productivity
-            FROM score_items WHERE run_id = %(run)s AND session = %(s)s - 1 GROUP BY 1)
+            FROM score_items WHERE run_id = %(prev_run)s AND session = %(prev_s)s GROUP BY 1)
         SELECT x.bioguide_id, CASE x.term_type WHEN 'sen' THEN 'sen' ELSE 'rep' END,
-               x.end_date <= s.b, c.fec_ids, coalesce(seats.value, 0), prev.participation,
+               x.end_date <= s.b, c.fec_ids, coalesce(seats.value, 0), coalesce(seats.committee, 0),
+               prev.participation,
                CASE WHEN served.days >= %(min)s
                     THEN coalesce(prev.productivity, 0) * (s.a - s.pa) / served.days END,
                (SELECT max(end_date) FROM critter_terms t WHERE t.bioguide_id = x.bioguide_id)
         FROM seated x CROSS JOIN s JOIN critters c USING (bioguide_id)
         LEFT JOIN seats USING (bioguide_id) LEFT JOIN served USING (bioguide_id)
-        LEFT JOIN prev USING (bioguide_id)""", {"run": run_id, "s": session, "min": min_days})]
+        LEFT JOIN prev USING (bioguide_id)""",
+        {"run": run_id, "s": session, "min": min_days, "prev_run": prev_run, "prev_s": prev_session,
+         "as_of": as_of})]
 
 
 def session_points(conn: psycopg.Connection, run_id: int, session: int) -> dict[str, float]:
@@ -334,3 +337,46 @@ def save_prices(conn: psycopg.Connection, run_id: int, session: int, fec_cycle: 
                             p.projected_productivity, p.multiplier, p.session_cost, p.signing_fee,
                             p.weekly_fee))
     conn.commit()
+
+
+def seated_on(conn: psycopg.Connection, day) -> dict[str, str]:
+    """bioguide -> chamber (rep | sen) for members in office on `day`."""
+    return dict(conn.execute("""
+        SELECT DISTINCT ON (bioguide_id) bioguide_id, CASE term_type WHEN 'sen' THEN 'sen' ELSE 'rep' END
+        FROM critter_terms WHERE start_date <= %(d)s AND end_date > %(d)s
+        ORDER BY bioguide_id, start_date DESC""", {"d": day}).fetchall())
+
+
+def majority_sides(conn: psycopg.Connection, day) -> dict[str, str]:
+    """chamber -> the caucus holding most seats on `day`."""
+    rows = conn.execute("""
+        WITH seated AS (
+            SELECT DISTINCT ON (t.bioguide_id) t.bioguide_id, t.term_type
+            FROM critter_terms t WHERE t.start_date <= %(d)s AND t.end_date > %(d)s
+            ORDER BY t.bioguide_id, t.start_date DESC),
+        side AS (
+            SELECT DISTINCT ON (p.bioguide_id) p.bioguide_id, coalesce(p.caucus, p.party) AS side
+            FROM critter_parties p WHERE p.start_date <= %(d)s ORDER BY p.bioguide_id, p.start_date DESC)
+        SELECT CASE term_type WHEN 'sen' THEN 'sen' ELSE 'rep' END, side, count(*)
+        FROM seated JOIN side USING (bioguide_id) GROUP BY 1, 2 ORDER BY 1, 3 DESC""", {"d": day}).fetchall()
+    out: dict[str, str] = {}
+    for chamber, side, _ in rows:
+        out.setdefault(chamber, side)
+    return out
+
+
+def held_seats(conn: psycopg.Connection, run_id: int, session: int, day) -> list[tuple]:
+    """Committee and subcommittee seats held on `day`: (bioguide, chamber, category, role, value)."""
+    return conn.execute("""
+        SELECT bioguide_id, detail->>'chamber', category, detail->>'role', (detail->>'value')::float
+        FROM score_items WHERE run_id = %(run)s AND session = %(s)s
+          AND category IN ('COMMITTEE_SEAT', 'SUBCOMMITTEE_SEAT')
+          AND item_date <= %(d)s AND %(d)s::date < item_date + (detail->>'days')::int""",
+        {"run": run_id, "s": session, "d": day}).fetchall()
+
+
+def freshmen(conn: psycopg.Connection, start, end) -> set[str]:
+    """Members whose first term in their chamber began in [start, end)."""
+    return {row[0] for row in conn.execute("""
+        SELECT bioguide_id FROM critter_terms GROUP BY bioguide_id, term_type
+        HAVING min(start_date) >= %s AND min(start_date) < %s""", (start, end))}

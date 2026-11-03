@@ -1,6 +1,6 @@
 import argparse
 import time
-from datetime import date
+from datetime import date, timedelta
 from statistics import correlation, quantiles
 
 from pathlib import Path
@@ -93,14 +93,15 @@ def score_congress(conn, congress: int, ruleset: scoring.Ruleset) -> tuple[int, 
     for bill in bills:
         items.extend(scoring.score_bill(bill, ruleset, sessions, on_committee))
     scoring.apply_caps(items, ruleset)
-    items.extend(scoring.score_votes(votes, ruleset, sessions, seated, db.delegates(conn)))
+    items.extend(scoring.score_votes(votes, ruleset, sessions, seated))
 
     def chamber_of(bioguide: str, day) -> str:
         return "sen" if any(a <= day <= b for a, b in terms.get((bioguide, "sen"), [])) else "rep"
 
     scoring.apply_chamber_factor(items, ruleset, chamber_of)
     items.extend(scoring.score_positions(positions, ruleset, sessions,
-                                         scoring.floor_participation(votes, exempt)))
+                                         scoring.floor_participation(votes, exempt, sessions,
+                                                                     ruleset.raw["settlement"]["weeks"])))
     return db.save_score_run(conn, congress, ruleset, items), items
 
 
@@ -153,7 +154,28 @@ def cmd_price(args) -> None:
         if not path.exists():
             raise SystemExit(f"missing {path}: run critters download (or pass --fec-cycle)")
         receipts = fec.receipts(path)
-        rows = db.pricing_inputs(conn, run_id, args.session, cfg["min_days_served"])
+        prev_run = args.prev_run
+        if args.session == 1 and prev_run is None:
+            prev_run = conn.execute("SELECT max(run_id) FROM score_runs WHERE congress = %s",
+                                    (congress - 1,)).fetchone()[0]
+            if prev_run is None:
+                raise SystemExit(f"pricing session 1 needs a scoring run of the {congress - 1}th Congress")
+        rows = db.pricing_inputs(conn, run_id, args.session, cfg["min_days_served"], prev_run, args.as_of)
+        unposted = args.session == 1 and not any(r["committee_value"] for r in rows)
+        if unposted:
+            # A new Congress before its committee rosters are posted: project the seats.
+            first_day = date(download.session_year(congress, 1), 1, 3)
+            last_day = first_day - timedelta(days=1)
+            old, new = db.majority_sides(conn, last_day), db.majority_sides(conn, first_day)
+            flipped = {chamber for chamber in new if old.get(chamber) != new[chamber]}
+            held = [pricing.HeldSeat(*h) for h in db.held_seats(conn, prev_run, 2, last_day)]
+            projected = pricing.carried_seats(
+                held, flipped, db.freshmen(conn, download.congress_dates(congress - 1)[0], first_day),
+                ruleset.raw["positions"], {r["bioguide_id"]: r["chamber"] for r in rows},
+                db.seated_on(conn, last_day))
+            keep = 1 - cfg["unposted_seat_discount"]
+            for r in rows:
+                r["seat_value"] += projected[r["bioguide_id"]] * keep - r["committee_value"]
         members = []
         for r in rows:
             found = [receipts[i] for i in r["fec_ids"] if i in receipts]
@@ -165,13 +187,17 @@ def cmd_price(args) -> None:
         actual = db.session_points(conn, run_id, args.session)
         names = dict(conn.execute("SELECT bioguide_id, official_full_name FROM critters").fetchall())
 
-    start = date(download.session_year(congress, args.session), 1, 3)
-    end = date(start.year + 1, 1, 3)
+    start = args.as_of or date(download.session_year(congress, args.session), 1, 3)
+    end = date(download.session_year(congress, args.session) + 1, 1, 3)
     left = {r["bioguide_id"]: r["left_office"] for r in rows}
     costs = sorted(p.session_cost for p in prices)
     q1, q2, q3 = quantiles(costs, n=4)
     print(f"run {run_id}: {congress}th Congress session {args.session} ({start.year}), "
           f"ruleset {ruleset.version}, FEC cycle {cycle}")
+    if unposted:
+        print(f"committee rosters not posted yet: seats projected from {last_day}"
+              f"{', majority changed in ' + ' and '.join(sorted(flipped)) if flipped else ''}"
+              f", at {keep:.0%} of their value")
     print(f"{len(prices)} critters seated on {start}: "
           + ", ".join(f"{c} {sum(p.chamber == c for p in prices)}" for c in ("rep", "sen")))
     print(f"Session Cost: min ${costs[0]:,}  25% ${q1:,.0f}  median ${q2:,.0f}  75% ${q3:,.0f}  max ${costs[-1]:,}")
@@ -262,6 +288,11 @@ def main() -> None:
     p = sub.add_parser("price", help="price critters for a session from a scoring run")
     p.add_argument("--run", type=int, help="run id (default: latest)")
     p.add_argument("--session", type=int, default=2, help="session to price (needs the one before it)")
+    p.add_argument("--prev-run", type=int, help="run of the previous Congress, for session 1 "
+                                                "(default: its latest run)")
+    p.add_argument("--as-of", type=date.fromisoformat,
+                   help="price critters seated, with the seats they hold, on this date (default: "
+                        "the session's first day; a new Congress seats committees weeks later)")
     p.add_argument("--fec-cycle", type=int, help="FEC cycle for donations (default: last one complete "
                                                   "when the session opens)")
     p.add_argument("--ruleset", type=Path, default=DEFAULT_RULESET, help="ruleset with the pricing constants")

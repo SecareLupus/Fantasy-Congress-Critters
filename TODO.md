@@ -6,6 +6,8 @@
 - Complete budgeting across legislative years in Section 6: cross-year mechanics, carryover rules, and caps
 - [x] Specify pricing formulas for session costs and re-election premiums (candidate odds-based pricing still deferred)
 - Decide mid-session repricing for new purchases (how a critter's Session Cost moves once the session is under way)
+- Decide whether chamber balance should hold every session (Design-Scoring §11): in 2025 the busier Senate out-earned the House on productivity
+- Flag announced departures in the market (members leaving for the administration or retiring mid-session)
 - [x] Turn the pricing backtest into code: a `critters price` command with the constants in the ruleset
 - [x] Finalize committee prestige tier mapping (House and Senate) and base values
 - [x] Define authorship multipliers and dilution curve shape/parameters

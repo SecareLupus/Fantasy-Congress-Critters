@@ -15,13 +15,10 @@ import tomllib
 from collections import defaultdict
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 
 CAST = {"yea", "nay", "present", "other"}
-# Delegates and the Resident Commissioner: House members who vote only in the Committee
-# of the Whole, not on final passage.
-NON_VOTING_STATES = {"DC", "PR", "GU", "VI", "AS", "MP"}
 FULL_COMMITTEE_SUFFIX = "00"
 
 
@@ -267,7 +264,7 @@ def apply_chamber_factor(items: list[ScoreItem], ruleset: Ruleset,
     left alone: they are already worth the same per session in both chambers."""
     factors = ruleset.raw["productivity"]["chamber_factor"]
     for item in items:
-        if item.pillar != "productivity" or item.vote_id:
+        if item.pillar != "productivity" or item.vote_id or item.category == "VOTE_CAST":
             continue
         factor = factors.get(chamber_of(item.bioguide_id, item.item_date), 1.0)
         if factor != 1.0:
@@ -290,30 +287,43 @@ class VoteRow:
 
 
 def score_votes(votes: Iterable[VoteRow], ruleset: Ruleset, sessions: list[Session],
-                seated: Callable[[str, date], bool], delegates: frozenset[str] = frozenset()) -> list[ScoreItem]:
-    """A vote cast is worth a session's full-attendance value over the roll calls the member
-    could cast: House, Senate, or for delegates the Committee of the Whole roll calls."""
+                seated: Callable[[str, date], bool]) -> list[ScoreItem]:
+    """Votes settle weekly (Design-Scoring §7.1). Each week of a session is worth
+    full_attendance / weeks, paid by the member's participation that week and prorated by
+    the days they were seated. Perfect attendance is worth full_attendance every session,
+    however many roll calls the chamber holds, and a week's points are final when it ends.
+    A yea on a nomination that is confirmed scores extra, per vote."""
     rules = ruleset.raw["votes"]
     scale = ruleset.raw["productivity"]["scale"]
+    weeks = ruleset.raw["settlement"]["weeks"]
+    votes = list(votes)
+    participation = floor_participation(votes, {}, sessions, weeks)
+    members: dict[int, set[str]] = defaultdict(set)
     items = []
     for v in votes:
         session = session_of(sessions, v.vote_date)
-        if session is None or v.position not in CAST or not seated(v.bioguide_id, v.vote_date):
+        if session is None:
             continue
-
-        def item(category: str, points: float) -> ScoreItem:
-            return ScoreItem(v.bioguide_id, session.number, "productivity", category,
-                             v.vote_date, points * scale, vote_id=v.vote_id)
-
-        chamber = "rep" if v.vote_id.split("-")[1].startswith("h") else "sen"
-        if chamber == "rep" and v.bioguide_id in delegates:
-            chamber = "delegate"
-        items.append(item("VOTE_CAST", rules["full_attendance"] / rules["expected_roll_calls"][chamber]))
-        if v.question == "On the Nomination":
+        members[session.number].add(v.bioguide_id)
+        if v.question == "On the Nomination" and v.position in CAST and seated(v.bioguide_id, v.vote_date):
             if rules["confirmation"]:
-                items.append(item("CONFIRMATION_VOTE", rules["confirmation"]))
+                items.append(ScoreItem(v.bioguide_id, session.number, "productivity", "CONFIRMATION_VOTE",
+                                       v.vote_date, rules["confirmation"] * scale, vote_id=v.vote_id))
             if rules["confirmation_success"] and v.position == "yea" and v.result and "Confirmed" in v.result:
-                items.append(item("CONFIRMATION_SUCCESS", rules["confirmation_success"]))
+                items.append(ScoreItem(v.bioguide_id, session.number, "productivity", "CONFIRMATION_SUCCESS",
+                                       v.vote_date, rules["confirmation_success"] * scale, vote_id=v.vote_id))
+    weekly = rules["full_attendance"] / weeks * scale
+    for s in sessions:
+        for bioguide in sorted(members[s.number]):
+            rates = participation.week_rates(bioguide, s)
+            for w, (start, end) in enumerate(week_bounds(s, weeks)):
+                length = (end - start).days
+                days = sum(seated(bioguide, start + timedelta(i)) for i in range(length))
+                if days:
+                    items.append(ScoreItem(bioguide, s.number, "productivity", "VOTE_CAST", start,
+                                           weekly * rates[w] * days / length,
+                                           detail={"week": w + 1, "participation": round(rates[w], 4),
+                                                   "days_seated": days}))
     return items
 
 
@@ -378,17 +388,58 @@ def score_positions(positions: Iterable[Position], ruleset: Ruleset, sessions: l
     return items
 
 
-def floor_participation(votes: Iterable[VoteRow], exempt: dict[str, list[tuple[date, date]]]) -> Participation:
-    """Share of a member's recorded roll calls in a window that they voted on. Days in an
-    exempt post (the Speaker) are left out; a window with no votes counts as full."""
-    by_member: dict[str, list[tuple[date, bool]]] = defaultdict(list)
+def week_bounds(session: Session, weeks: int) -> list[tuple[date, date]]:
+    """The settlement weeks of a session: seven days each from its first day; the last week
+    runs to the session's end."""
+    bounds = [(session.start + timedelta(7 * w), session.start + timedelta(7 * (w + 1))) for w in range(weeks)]
+    bounds[-1] = (bounds[-1][0], session.end)
+    return bounds
+
+
+class WeeklyParticipation:
+    """Roll-call participation by settlement week: the share of the roll calls a member
+    was recorded on that they voted on. A week with none counts at the member's
+    session-to-date rate (full before their first roll call)."""
+
+    def __init__(self, rates: dict[tuple[str, int], list[float]], sessions: list[Session], weeks: int):
+        self._rates, self.sessions, self.weeks = rates, sessions, weeks
+
+    def week_rates(self, bioguide: str, session: Session) -> list[float]:
+        return self._rates.get((bioguide, session.number), [1.0] * self.weeks)
+
+    def __call__(self, bioguide: str, start: date, end: date) -> float:
+        """Days-weighted participation over [start, end), within one session."""
+        session = session_of(self.sessions, start)
+        if session is None:
+            return 1.0
+        rates = self.week_rates(bioguide, session)
+        total = weighted = 0
+        for rate, (a, b) in zip(rates, week_bounds(session, self.weeks)):
+            days = (min(b, end) - max(a, start)).days
+            if days > 0:
+                total += days
+                weighted += days * rate
+        return weighted / total if total else 1.0
+
+
+def floor_participation(votes: Iterable[VoteRow], exempt: dict[str, list[tuple[date, date]]],
+                        sessions: list[Session], weeks: int) -> WeeklyParticipation:
+    """Weekly floor participation. Roll calls on days in an exempt post (the Speaker) are
+    left out."""
+    counts: dict[tuple[str, int], list[list[int]]] = {}
     for v in votes:
-        by_member[v.bioguide_id].append((v.vote_date, v.position in CAST))
-
-    def rate(bioguide: str, start: date, end: date) -> float:
-        periods = exempt.get(bioguide, [])
-        window = [cast for day, cast in by_member.get(bioguide, [])
-                  if start <= day < end and not any(a <= day < b for a, b in periods)]
-        return sum(window) / len(window) if window else 1.0
-
-    return rate
+        session = session_of(sessions, v.vote_date)
+        if session is None or any(a <= v.vote_date < b for a, b in exempt.get(v.bioguide_id, [])):
+            continue
+        week = min((v.vote_date - session.start).days // 7, weeks - 1)
+        tally = counts.setdefault((v.bioguide_id, session.number), [[0, 0] for _ in range(weeks)])[week]
+        tally[0] += v.position in CAST
+        tally[1] += 1
+    rates = {}
+    for key, tallies in counts.items():
+        out, cast, held = [], 0, 0
+        for c, n in tallies:
+            cast, held = cast + c, held + n
+            out.append(c / n if n else (cast / held if held else 1.0))
+        rates[key] = out
+    return WeeklyParticipation(rates, sessions, weeks)
