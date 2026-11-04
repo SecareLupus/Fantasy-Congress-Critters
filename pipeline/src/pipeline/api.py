@@ -1,25 +1,36 @@
 """The web API behind the site (Design-Pages §13): leagues and their standings, rosters,
-the market, critters, and how fresh the data is. Read-only for now; accounts, joining
-and trading come next.
+the market, critters, and how fresh the data is; accounts (auth.py) and joining a league.
+Trading comes next.
 
 Every view takes `on`, the date to show the game as of (default: today), so a past
-season can be browsed as it stood. Run it with `critters serve`; in production it also
-serves the built site from web/dist.
+season can be browsed as it stood; joining always happens today. Run it with
+`critters serve`; in production it also serves the built site from web/dist.
+
+Requests that change anything must send JSON. Browsers can't send JSON across sites
+without asking first, which, with the SameSite session cookie, keeps other sites from
+acting for a signed-in player.
 """
 
+import os
 from contextlib import asynccontextmanager
 from datetime import date, timedelta
 
-from fastapi import Depends, FastAPI, HTTPException, Request
+import psycopg
+from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from psycopg_pool import ConnectionPool
+from pydantic import BaseModel
 
-from . import db, leagues, ledger, play, scoring
+from . import auth, db, leagues, ledger, play, scoring
 from .build import DEFAULT_RULESET
 from .config import DATABASE_URL, REPO_ROOT
 
 SITE = REPO_ROOT / "web" / "dist"
+COOKIE = "critters_session"
+# Set CRITTERS_SECURE_COOKIE=1 when the site is served over HTTPS.
+SECURE_COOKIE = os.environ.get("CRITTERS_SECURE_COOKIE") == "1"
+throttle = auth.Throttle()
 
 
 @asynccontextmanager
@@ -41,7 +52,108 @@ def connection(request: Request):
 
 @app.exception_handler(play.Problem)
 def problem(request: Request, e: play.Problem) -> JSONResponse:
-    return JSONResponse({"detail": str(e)}, status_code=404 if isinstance(e, play.NotFound) else 400)
+    code = 404 if isinstance(e, play.NotFound) else 401 if isinstance(e, auth.NotSignedIn) else 400
+    return JSONResponse({"detail": str(e)}, status_code=code)
+
+
+def json_only(request: Request) -> None:
+    if request.headers.get("content-type", "").split(";")[0].strip() != "application/json":
+        raise HTTPException(415, "send JSON")
+
+
+def signed_in(request: Request, conn=Depends(connection)) -> dict | None:
+    token = request.cookies.get(COOKIE)
+    return db.session_account(conn, auth.token_hash(token)) if token else None
+
+
+def account(me: dict | None = Depends(signed_in)) -> dict:
+    if me is None:
+        raise auth.NotSignedIn("sign in first")
+    return me
+
+
+def _start_session(conn, response: Response, account_id: int) -> None:
+    token = auth.new_token()
+    db.create_session(conn, auth.token_hash(token), account_id, auth.SESSION_DAYS)
+    response.set_cookie(COOKIE, token, max_age=auth.SESSION_DAYS * 86400, httponly=True, samesite="lax",
+                        secure=SECURE_COOKIE, path="/")
+
+
+def _me(conn, me: dict) -> dict:
+    return {"account_id": me["account_id"], "username": me["username"], "role": me["role"],
+            "rosters": db.account_rosters(conn, me["account_id"])}
+
+
+class SignUp(BaseModel):
+    invite_code: str
+    username: str
+    password: str
+
+
+class SignIn(BaseModel):
+    username: str
+    password: str
+
+
+@app.post("/api/signup", dependencies=[Depends(json_only)])
+def signup(body: SignUp, request: Request, response: Response, conn=Depends(connection)) -> dict:
+    username = body.username.strip()
+    auth.check_new_account(username, body.password)
+    address = f"ip:{request.client.host if request.client else '?'}"
+    throttle.check(address)
+    try:
+        made = db.create_account(conn, auth.normalize_code(body.invite_code), username,
+                                 auth.hash_password(body.password))
+    except psycopg.errors.UniqueViolation:
+        raise play.Problem(f"the username {username} is taken")
+    if made is None:
+        throttle.fail(address)
+        raise play.Problem("that invite code isn't valid, or has been used up or expired")
+    _start_session(conn, response, made["account_id"])
+    return _me(conn, made)
+
+
+@app.post("/api/signin", dependencies=[Depends(json_only)])
+def signin(body: SignIn, request: Request, response: Response, conn=Depends(connection)) -> dict:
+    name_key, address = f"user:{body.username.strip().lower()}", f"ip:{request.client.host if request.client else '?'}"
+    throttle.check(name_key, address)
+    found = db.account_by_name(conn, body.username.strip())
+    ok = auth.check_password(body.password, found["password_hash"] if found else auth.DUMMY_HASH)
+    if not found or not ok or found["disabled"]:
+        throttle.fail(name_key, address)
+        raise play.Problem("wrong username or password")
+    throttle.clear(name_key)
+    _start_session(conn, response, found["account_id"])
+    return _me(conn, found)
+
+
+@app.post("/api/signout", dependencies=[Depends(json_only)])
+def signout(request: Request, response: Response, conn=Depends(connection)) -> dict:
+    token = request.cookies.get(COOKIE)
+    if token:
+        db.delete_session(conn, auth.token_hash(token))
+    response.delete_cookie(COOKIE, path="/")
+    return {}
+
+
+@app.get("/api/me")
+def whoami(conn=Depends(connection), me: dict | None = Depends(signed_in)) -> dict | None:
+    return _me(conn, me) if me else None
+
+
+@app.post("/api/leagues/{league_id}/join", dependencies=[Depends(json_only)])
+def join(league_id: int, conn=Depends(connection), me: dict = Depends(account)) -> dict:
+    league = play.league(conn, league_id)
+    if not _open_to_join(league):
+        raise play.Problem("only official leagues that haven't ended can be joined from the site for now")
+    roster_id = play.join(conn, league, me["username"], _today(), me["account_id"])
+    return {"roster_id": roster_id}
+
+
+def _open_to_join(league: dict) -> bool:
+    """Private leagues will take invitations from their game master; until then only
+    official leagues can be joined from the site."""
+    return league["visibility"] == "official" and _today() < league["end_date"]
 
 
 def _today() -> date:
@@ -109,6 +221,7 @@ def league_detail(league_id: int, on: date | None = None, conn=Depends(connectio
         "ruleset_version": league["ruleset_version"], "preset": league["preset"],
         "created_by": league["created_by"], "creator_role": league["creator_role"],
         "frozen": not leagues.can_change(league["start_date"], on),
+        "open_to_join": _open_to_join(league),
         "settings": league["settings"],
         "years": [_year(m, play.final_weeks(conn, league, m), on) for m in markets],
         "standings": [{"rank": i, "roster_id": s.roster_id, "player": s.player, "total": s.total,

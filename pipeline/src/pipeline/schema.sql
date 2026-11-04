@@ -401,3 +401,41 @@ CREATE TABLE IF NOT EXISTS settled_points (
     PRIMARY KEY (ruleset_key, congress, session, week, bioguide_id),
     FOREIGN KEY (ruleset_key, congress, session, week) REFERENCES settled_weeks ON DELETE CASCADE
 );
+
+-- Website accounts (auth.py). The beta is invite-only: an invite code creates an account
+-- with the invite's role. Passwords are stored as scrypt hashes.
+CREATE TABLE IF NOT EXISTS invites (
+    code       text PRIMARY KEY,
+    role       text NOT NULL DEFAULT 'player' CHECK (role IN ('player', 'commissioner', 'gamemaker')),
+    max_uses   int NOT NULL DEFAULT 1 CHECK (max_uses > 0),
+    uses       int NOT NULL DEFAULT 0,
+    expires_at timestamptz,
+    note       text,
+    created_by text NOT NULL,
+    created_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS accounts (
+    account_id    bigserial PRIMARY KEY,
+    username      text NOT NULL,
+    password_hash text NOT NULL,
+    role          text NOT NULL DEFAULT 'player' CHECK (role IN ('player', 'commissioner', 'gamemaker')),
+    invite_code   text REFERENCES invites ON DELETE SET NULL,
+    created_at    timestamptz NOT NULL DEFAULT now(),
+    disabled      boolean NOT NULL DEFAULT false
+);
+CREATE UNIQUE INDEX IF NOT EXISTS accounts_username ON accounts (lower(username));
+
+-- Signed-in browsers. The cookie holds a random token; only its SHA-256 is stored.
+CREATE TABLE IF NOT EXISTS sessions (
+    token_hash text PRIMARY KEY,
+    account_id bigint NOT NULL REFERENCES accounts ON DELETE CASCADE,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    expires_at timestamptz NOT NULL
+);
+CREATE INDEX IF NOT EXISTS sessions_account ON sessions (account_id);
+
+-- A roster joined from the website belongs to an account; player is its username.
+-- Rosters made with `critters league join` have none.
+ALTER TABLE rosters ADD COLUMN IF NOT EXISTS account_id bigint REFERENCES accounts ON DELETE SET NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS rosters_account ON rosters (league_id, account_id);

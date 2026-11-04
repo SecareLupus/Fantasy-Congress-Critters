@@ -453,15 +453,15 @@ def league_run(conn: psycopg.Connection, ruleset: dict, congress: int) -> int | 
                         (congress, Jsonb(ruleset))).fetchone()[0]
 
 
-def join_league(conn: psycopg.Connection, league_id: int, player: str, day) -> int:
+def join_league(conn: psycopg.Connection, league_id: int, player: str, day, account_id: int | None = None) -> int:
     roster_id = conn.execute(
-        "INSERT INTO rosters (league_id, player, joined_on) VALUES (%s, %s, %s) RETURNING roster_id",
-        (league_id, player, day)).fetchone()[0]
+        "INSERT INTO rosters (league_id, player, joined_on, account_id) VALUES (%s, %s, %s, %s) RETURNING roster_id",
+        (league_id, player, day, account_id)).fetchone()[0]
     conn.commit()
     return roster_id
 
 
-ROSTER_COLUMNS = ("roster_id", "league_id", "player", "joined_on")
+ROSTER_COLUMNS = ("roster_id", "league_id", "player", "joined_on", "account_id")
 
 
 def rosters(conn: psycopg.Connection, league_id: int, player: str | None = None) -> list[dict]:
@@ -805,3 +805,95 @@ def critter_points(conn: psycopg.Connection, run_id: int, session: int, bioguide
         FROM score_items WHERE run_id = %(r)s AND session = %(s)s AND bioguide_id = %(b)s
           AND category = 'VOTE_CAST' AND item_date < %(d)s""", args).fetchone()[0]
     return {"categories": categories, "bills": bills, "positions": positions, "participation": participation}
+
+
+def create_invite(conn: psycopg.Connection, code: str, role: str, max_uses: int, expires_at,
+                  note: str | None, created_by: str) -> None:
+    conn.execute("""INSERT INTO invites (code, role, max_uses, expires_at, note, created_by)
+                    VALUES (%s, %s, %s, %s, %s, %s)""", (code, role, max_uses, expires_at, note, created_by))
+    conn.commit()
+
+
+def invites(conn: psycopg.Connection) -> list[dict]:
+    return _rows(conn.execute("""
+        SELECT i.code, i.role, i.uses, i.max_uses, i.expires_at, i.note, i.created_by, i.created_at,
+               array_remove(array_agg(a.username ORDER BY a.created_at), NULL) AS accounts
+        FROM invites i LEFT JOIN accounts a ON a.invite_code = i.code
+        GROUP BY i.code ORDER BY i.created_at"""))
+
+
+def create_account(conn: psycopg.Connection, code: str, username: str, password_hash: str) -> dict | None:
+    """Spend one use of an invite and make an account with its role, in one transaction.
+    None if the code is unknown, used up or expired. Raises psycopg.errors.UniqueViolation
+    if the username is taken."""
+    try:
+        role = conn.execute("""
+            UPDATE invites SET uses = uses + 1
+            WHERE code = %s AND uses < max_uses AND (expires_at IS NULL OR expires_at > now())
+            RETURNING role""", (code,)).fetchone()
+        if role is None:
+            conn.rollback()
+            return None
+        account_id = conn.execute("""
+            INSERT INTO accounts (username, password_hash, role, invite_code) VALUES (%s, %s, %s, %s)
+            RETURNING account_id""", (username, password_hash, role[0], code)).fetchone()[0]
+        conn.commit()
+    except psycopg.Error:
+        conn.rollback()
+        raise
+    return {"account_id": account_id, "username": username, "role": role[0]}
+
+
+ACCOUNT_COLUMNS = "account_id, username, role, disabled, created_at, invite_code"
+
+
+def account_by_name(conn: psycopg.Connection, username: str) -> dict | None:
+    """The account with this username (any case), with its password hash."""
+    found = _rows(conn.execute(f"SELECT {ACCOUNT_COLUMNS}, password_hash FROM accounts WHERE lower(username) = lower(%s)",
+                               (username,)))
+    return found[0] if found else None
+
+
+def accounts(conn: psycopg.Connection) -> list[dict]:
+    return _rows(conn.execute(f"""
+        SELECT {ACCOUNT_COLUMNS}, (SELECT count(*) FROM rosters r WHERE r.account_id = a.account_id) AS rosters
+        FROM accounts a ORDER BY created_at"""))
+
+
+def update_account(conn: psycopg.Connection, account_id: int, **changes) -> None:
+    """Set role, password_hash or disabled. A new password or a disabled account signs out
+    every browser."""
+    allowed = {"role", "password_hash", "disabled"}
+    cols = [c for c in changes if c in allowed]
+    conn.execute(f"UPDATE accounts SET {', '.join(f'{c} = %s' for c in cols)} WHERE account_id = %s",
+                 [changes[c] for c in cols] + [account_id])
+    if "password_hash" in changes or changes.get("disabled"):
+        conn.execute("DELETE FROM sessions WHERE account_id = %s", (account_id,))
+    conn.commit()
+
+
+def create_session(conn: psycopg.Connection, token_hash: str, account_id: int, days: int) -> None:
+    conn.execute("DELETE FROM sessions WHERE expires_at < now()")
+    conn.execute("""INSERT INTO sessions (token_hash, account_id, expires_at)
+                    VALUES (%s, %s, now() + make_interval(days => %s))""", (token_hash, account_id, days))
+    conn.commit()
+
+
+def session_account(conn: psycopg.Connection, token_hash: str) -> dict | None:
+    found = _rows(conn.execute(f"""
+        SELECT {', '.join('a.' + c.strip() for c in ACCOUNT_COLUMNS.split(','))}
+        FROM sessions s JOIN accounts a USING (account_id)
+        WHERE s.token_hash = %s AND s.expires_at > now() AND NOT a.disabled""", (token_hash,)))
+    return found[0] if found else None
+
+
+def delete_session(conn: psycopg.Connection, token_hash: str) -> None:
+    conn.execute("DELETE FROM sessions WHERE token_hash = %s", (token_hash,))
+    conn.commit()
+
+
+def account_rosters(conn: psycopg.Connection, account_id: int) -> list[dict]:
+    return _rows(conn.execute("""
+        SELECT r.roster_id, r.league_id, l.name AS league, r.joined_on, l.start_date, l.end_date
+        FROM rosters r JOIN leagues l USING (league_id) WHERE r.account_id = %s ORDER BY l.start_date DESC""",
+                              (account_id,)))

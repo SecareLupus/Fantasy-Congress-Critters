@@ -7,7 +7,7 @@ from statistics import correlation, quantiles
 
 from pathlib import Path
 
-from . import db, download, fec, leagues, ledger, legislators, live, play, pricing, scoring
+from . import auth, db, download, fec, leagues, ledger, legislators, live, play, pricing, scoring
 from .build import DEFAULT_RULESET, load_rosters, score_congress
 from .billstatus import iter_zip
 from .config import BILL_TYPES
@@ -380,6 +380,69 @@ def cmd_status(args) -> None:
     print("\n".join(lines) or "no updates yet: critters update")
 
 
+def cmd_invite_create(args) -> None:
+    from datetime import datetime, timezone
+    expires = datetime.now(timezone.utc) + timedelta(days=args.days) if args.days else None
+    with db.connect() as conn:
+        db.init_schema(conn)
+        codes = [auth.new_invite_code() for _ in range(args.count)]
+        for code in codes:
+            db.create_invite(conn, code, args.role, args.uses, expires, args.note, args.by)
+    for code in codes:
+        print(code)
+    print(f"{len(codes)} invite{'s' if len(codes) > 1 else ''} for {args.role}s, {args.uses} use"
+          f"{'s' if args.uses > 1 else ''} each" + (f", expiring {expires:%Y-%m-%d %H:%M} UTC" if expires else ""))
+
+
+def cmd_invite_list(args) -> None:
+    with db.connect() as conn:
+        db.init_schema(conn)
+        for i in db.invites(conn):
+            expiry = f"expires {i['expires_at']:%Y-%m-%d}" if i["expires_at"] else "no expiry"
+            print(f"{i['code']}  {i['role']:<12} {i['uses']}/{i['max_uses']} used, {expiry}, by {i['created_by']}"
+                  + (f" ({i['note']})" if i["note"] else "")
+                  + (f": {', '.join(i['accounts'])}" if i["accounts"] else ""))
+
+
+def _account(conn, username: str) -> dict:
+    found = db.account_by_name(conn, username)
+    if found is None:
+        raise SystemExit(f"no account {username}")
+    return found
+
+
+def cmd_account_list(args) -> None:
+    with db.connect() as conn:
+        db.init_schema(conn)
+        for a in db.accounts(conn):
+            print(f"{a['username']:<24} {a['role']:<12} {a['rosters']} roster{'s' if a['rosters'] != 1 else ''}, "
+                  f"joined {a['created_at']:%Y-%m-%d}" + (" DISABLED" if a["disabled"] else ""))
+
+
+def cmd_account_update(args) -> None:
+    changes = {}
+    if args.role:
+        changes["role"] = args.role
+    if args.disable or args.enable:
+        changes["disabled"] = bool(args.disable)
+    password = None
+    if args.reset_password:
+        password = auth.new_token()[:16]
+        changes["password_hash"] = auth.hash_password(password)
+    if not changes:
+        raise SystemExit("nothing to change: pass --role, --reset-password, --disable or --enable")
+    with db.connect() as conn:
+        db.init_schema(conn)
+        account = _account(conn, args.username)
+        db.update_account(conn, account["account_id"], **changes)
+    done = [f"role {args.role}"] if args.role else []
+    done += ["disabled"] if args.disable else ["enabled"] if args.enable else []
+    done += ["password reset"] if password else []
+    print(f"{account['username']}: {', '.join(done)}")
+    if password:
+        print(f"temporary password: {password} (signed out everywhere; send it privately)")
+
+
 def cmd_serve(args) -> None:
     import uvicorn
     uvicorn.run("pipeline.api:app", host=args.host, port=args.port, reload=args.reload)
@@ -443,6 +506,31 @@ def main() -> None:
 
     p = sub.add_parser("status", help="when each source last updated, and what failed")
     p.set_defaults(func=cmd_status)
+
+    p = sub.add_parser("invite", help="invite codes for website accounts (the beta is invite-only)")
+    invite_sub = p.add_subparsers(required=True)
+    q = invite_sub.add_parser("create", help="make invite codes")
+    q.add_argument("--by", required=True, help="who is inviting")
+    q.add_argument("--role", choices=auth.ROLES, default="player")
+    q.add_argument("--uses", type=int, default=1, help="accounts each code can make (default 1)")
+    q.add_argument("--days", type=int, default=30, help="days until it expires (0: never; default 30)")
+    q.add_argument("--count", type=int, default=1, help="how many codes")
+    q.add_argument("--note", help="who it's for")
+    q.set_defaults(func=cmd_invite_create)
+    q = invite_sub.add_parser("list", help="invite codes and the accounts they made")
+    q.set_defaults(func=cmd_invite_list)
+
+    p = sub.add_parser("account", help="website accounts")
+    account_sub = p.add_subparsers(required=True)
+    q = account_sub.add_parser("list", help="every account")
+    q.set_defaults(func=cmd_account_list)
+    q = account_sub.add_parser("update", help="change an account's role, reset its password, or disable it")
+    q.add_argument("username")
+    q.add_argument("--role", choices=auth.ROLES)
+    q.add_argument("--reset-password", action="store_true", help="set and print a temporary password")
+    q.add_argument("--disable", action="store_true", help="block sign-in and sign it out everywhere")
+    q.add_argument("--enable", action="store_true")
+    q.set_defaults(func=cmd_account_update)
 
     p = sub.add_parser("serve", help="run the web API (and the built site, if web/dist exists)")
     p.add_argument("--host", default="127.0.0.1")

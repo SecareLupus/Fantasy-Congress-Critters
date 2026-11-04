@@ -2,13 +2,28 @@ import { Link } from "react-router-dom";
 import { useApi, useAsOf, type LeagueSummary } from "../api";
 import { day, leagueType } from "../format";
 import Loading from "../Loading";
+import { useSession } from "../session";
 
 export default function Home() {
   const { query } = useAsOf();
+  const { me } = useSession();
   const { data, error } = useApi<LeagueSummary[]>("/api/leagues");
   if (!data) return <Loading error={error} />;
   return (
     <>
+      {me && me.rosters.length > 0 && (
+        <>
+          <h1>Your rosters</h1>
+          <ul className="plain">
+            {me.rosters.map((r) => (
+              <li key={r.roster_id}>
+                <Link to={`/leagues/${r.league_id}/rosters/${r.roster_id}${query()}`}>{r.league}</Link>{" "}
+                <span className="muted">· joined {day(r.joined_on)}</span>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
       <h1>Leagues</h1>
       {data.length === 0 ? (
         <p className="muted">No leagues yet.</p>

@@ -10,7 +10,9 @@ The site: React (Vite, TypeScript) over the API in `pipeline/src/pipeline/api.py
 
 Every page takes `?on=DATE` (the "As of" box) and links carry it along, to browse a past season as it stood.
 
-It is read-only for now: players still join, buy and drop with the `critters league` commands. Accounts (invite code and password) and trading from the site come next.
+- **Sign in** (`/signin`) and **create an account** (`/signup`, with an invite code from `critters invite create`; `?invite=CODE` fills it in).
+
+A signed-in player can join an official league from its page; their roster is highlighted in the standings and listed on the home page. Buying and dropping still happen with `critters league buy` and `drop`; trading from the site comes next.
 
 ## Development
 
