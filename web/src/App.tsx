@@ -3,6 +3,9 @@ import { useApi, useAsOf, type Status } from "./api";
 import { when } from "./format";
 import Critter from "./pages/Critter";
 import Home from "./pages/Home";
+import Invites from "./pages/Invites";
+import ManageLeague from "./pages/ManageLeague";
+import NewLeague from "./pages/NewLeague";
 import League from "./pages/League";
 import Market from "./pages/Market";
 import Roster from "./pages/Roster";
@@ -41,6 +44,7 @@ function Account() {
   }
   return (
     <span className="account">
+      {me.role === "gamemaker" && <Link to="/invites">Invites</Link>}
       {me.username}
       <button type="button" className="link" onClick={signOut}>
         Sign out
@@ -77,7 +81,10 @@ export default function App() {
       <main className="main">
         <Routes>
           <Route path="/" element={<Home />} />
+          <Route path="/leagues/new" element={<NewLeague />} />
           <Route path="/leagues/:leagueId" element={<League />} />
+          <Route path="/leagues/:leagueId/manage" element={<ManageLeague />} />
+          <Route path="/invites" element={<Invites />} />
           <Route path="/leagues/:leagueId/market" element={<Market />} />
           <Route path="/leagues/:leagueId/rosters/:rosterId" element={<Roster />} />
           <Route path="/critters/:bioguide" element={<Critter />} />

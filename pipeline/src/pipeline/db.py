@@ -419,7 +419,7 @@ def presets(conn: psycopg.Connection) -> dict[str, dict]:
 
 LEAGUE_COLUMNS = ("league_id", "name", "league_type", "visibility", "start_date", "end_date",
                   "ruleset_version", "ruleset", "preset", "settings", "created_by", "creator_role",
-                  "created_at", "updated_at")
+                  "created_at", "updated_at", "owner_account_id", "join_code")
 
 
 def create_league(conn: psycopg.Connection, **league) -> int:
@@ -441,9 +441,22 @@ def leagues(conn: psycopg.Connection, league_id: int | None = None) -> list[dict
 
 
 def update_league(conn: psycopg.Connection, league_id: int, settings: dict,
-                  ruleset_version: str, ruleset: dict) -> None:
-    conn.execute("""UPDATE leagues SET settings = %s, ruleset_version = %s, ruleset = %s, updated_at = now()
-                    WHERE league_id = %s""", (Jsonb(settings), ruleset_version, Jsonb(ruleset), league_id))
+                  ruleset_version: str, ruleset: dict, name: str | None = None) -> None:
+    conn.execute("""UPDATE leagues SET settings = %s, ruleset_version = %s, ruleset = %s,
+                        name = coalesce(%s, name), updated_at = now()
+                    WHERE league_id = %s""", (Jsonb(settings), ruleset_version, Jsonb(ruleset), name, league_id))
+    conn.commit()
+
+
+def set_join_code(conn: psycopg.Connection, league_id: int, code: str | None) -> None:
+    conn.execute("UPDATE leagues SET join_code = %s WHERE league_id = %s", (code, league_id))
+    conn.commit()
+
+
+def remove_roster(conn: psycopg.Connection, roster_id: int) -> None:
+    """Delete a roster and its transactions (only before a league starts, when nothing has scored)."""
+    conn.execute("DELETE FROM transactions WHERE roster_id = %s AND kind = 'drop'", (roster_id,))
+    conn.execute("DELETE FROM rosters WHERE roster_id = %s", (roster_id,))
     conn.commit()
 
 

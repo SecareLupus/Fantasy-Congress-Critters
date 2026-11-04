@@ -24,7 +24,14 @@ export default function Home() {
           </ul>
         </>
       )}
-      <h1>Leagues</h1>
+      <div className="title-row">
+        <h1>Leagues</h1>
+        {me && (
+          <Link className="button" to="/leagues/new">
+            Create a league
+          </Link>
+        )}
+      </div>
       {data.length === 0 ? (
         <p className="muted">No leagues yet.</p>
       ) : (
