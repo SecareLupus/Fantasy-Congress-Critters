@@ -27,6 +27,8 @@ uv run critters league standings 1
 uv run critters update                 # once a day during a season: new data, rescore, settle weeks
 uv run critters status                 # when each source last updated, and what failed
 uv run critters serve                  # the web API on http://127.0.0.1:8000 (see web/README.md)
+uv run critters invite create --by <you> --uses 5   # invite codes for website accounts
+uv run critters account list           # website accounts; account update resets passwords, roles
 uv run pytest
 ```
 
@@ -59,6 +61,7 @@ Raw files land in `data/raw/` (gitignored). `load` is idempotent: each bill and 
 - `rosters`, `transactions`: a player's roster in a league, and its purchases (with the price paid and the weeks reserved) and drops.
 - `source_syncs`: every attempt by `critters update` to bring a source up to date, with what changed, the newest data afterward, and the error if it failed.
 - `settled_weeks`, `settled_points`: weeks whose points are final for every league using a ruleset, and those points.
+- `invites`, `accounts`, `sessions`: website accounts, the invite codes that made them, and signed-in browsers (only a hash of each session token). A roster joined on the site points at its account.
 - `critters`, `critter_terms`, `committees`: reference data.
 
 ## Scoring
@@ -104,7 +107,17 @@ To schedule it, a crontab line such as:
 
 ## Web API
 
-`critters serve` runs the API behind the site (`api.py`, FastAPI): leagues with their standings, rosters, a league's market, critters and where their points came from, and data freshness from `source_syncs`. It is read-only for now. Every view takes `?on=DATE` to show the game as it stood that day, so the 2024 backtest can be browsed. It shares the league logic in `play.py` with the `league` commands, so the site and the command line agree. Weeks still to come are left out of a critter's points: a live run scores them at today's seats and attendance, which aren't points yet. When `web/dist` exists (`npm run build` in `web/`), `serve` also serves the site. See [web/README.md](../web/README.md) for development.
+`critters serve` runs the API behind the site (`api.py`, FastAPI): leagues with their standings, rosters, a league's market, critters and where their points came from, and data freshness from `source_syncs`; accounts, and joining a league. Trading from the site comes next. Every view takes `?on=DATE` to show the game as it stood that day, so the 2024 backtest can be browsed. It shares the league logic in `play.py` with the `league` commands, so the site and the command line agree. Weeks still to come are left out of a critter's points: a live run scores them at today's seats and attendance, which aren't points yet. When `web/dist` exists (`npm run build` in `web/`), `serve` also serves the site. See [web/README.md](../web/README.md) for development.
+
+### Accounts
+
+The beta is invite-only (`auth.py`). `critters invite create` makes codes, each good for `--uses` accounts with its `--role` (player, commissioner or gamemaker) until it expires (`--days`, default 30); `critters invite list` shows which accounts each made. Someone with a code creates an account on the site's sign-up page (`/signup?invite=CODE` fills it in). There's no email, so a forgotten password is reset by hand: `critters account update NAME --reset-password` prints a temporary one and signs the account out everywhere. `--disable` blocks an account.
+
+- Passwords are hashed with scrypt; at least 10 characters. Usernames are 3 to 24 letters, digits, hyphens or underscores, unique ignoring case, and are the player name in standings.
+- Signing in sets an HttpOnly, SameSite=Lax cookie with a random token, good for 30 days; the database keeps only its SHA-256. Set `CRITTERS_SECURE_COOKIE=1` when serving over HTTPS.
+- Requests that change anything must be JSON, which browsers won't send across sites without asking, so other sites can't act for a signed-in player.
+- Ten failed sign-ins for a username or from an address within 15 minutes block it for the rest of the window (in memory, per process).
+- A signed-in player can join an official league that hasn't ended, on today's date. Private leagues will be joined by invitation from their game master.
 
 ## Normalization notes
 

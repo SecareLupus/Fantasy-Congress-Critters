@@ -49,6 +49,7 @@ export type League = LeagueSummary & {
   created_by: string;
   creator_role: string;
   frozen: boolean;
+  open_to_join: boolean;
   settings: Settings;
   years: Year[];
   standings: Standing[];
@@ -193,4 +194,23 @@ export function useAsOf(): { on: string | null; query: (extra?: Record<string, s
       return s ? `?${s}` : "";
     },
   };
+}
+
+export type Me = {
+  account_id: number;
+  username: string;
+  role: "player" | "commissioner" | "gamemaker";
+  rosters: { roster_id: number; league_id: number; league: string; joined_on: string; start_date: string; end_date: string }[];
+};
+
+/** POST JSON (the API refuses anything else for changes); the error message is the API's. */
+export async function post<T>(path: string, body: object = {}): Promise<T> {
+  const r = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) {
+    const detail = data.detail;
+    // FastAPI reports a malformed body as a list of field errors.
+    throw new Error(typeof detail === "string" ? detail : `${r.status} ${r.statusText}`);
+  }
+  return data as T;
 }

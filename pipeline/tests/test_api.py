@@ -7,8 +7,8 @@ import psycopg
 import pytest
 from fastapi.testclient import TestClient
 
-from pipeline import db, play
-from pipeline.api import _pick, app
+from pipeline import auth, db, play
+from pipeline.api import _pick, app, throttle
 
 
 @pytest.fixture(scope="module")
@@ -81,3 +81,49 @@ def test_pick_defaults_to_the_year_under_way():
     assert _pick(markets, None, date(2030, 1, 1)).year == 2026
     with pytest.raises(play.NotFound):
         _pick(markets, 2027, date(2026, 3, 1))
+
+
+@pytest.fixture
+def invite(client):
+    """A one-use invite, and afterward the invite and any account it made are deleted."""
+    code = auth.new_invite_code()
+    with db.connect() as conn:
+        db.create_invite(conn, code, "player", 1, None, "test", "pytest")
+    yield code
+    with db.connect() as conn:
+        conn.execute("DELETE FROM accounts WHERE invite_code IN (SELECT code FROM invites WHERE created_by = 'pytest')")
+        conn.execute("DELETE FROM invites WHERE created_by = 'pytest'")
+        conn.commit()
+    throttle.failures.clear()
+
+
+def test_an_invite_makes_one_account_that_can_sign_out_and_in(client, invite):
+    name = "pytest-" + invite[:4].lower()
+    made = client.post("/api/signup", json={"invite_code": invite.lower().replace("-", " "),
+                                            "username": name, "password": "a long password"})
+    assert made.status_code == 200 and made.json()["username"] == name
+    assert client.get("/api/me").json()["username"] == name
+    again = client.post("/api/signup", json={"invite_code": invite, "username": name + "x", "password": "a long password"})
+    assert "used up" in again.json()["detail"]
+    client.post("/api/signout", json={})
+    assert client.get("/api/me").json() is None
+    assert client.post("/api/signin", json={"username": name, "password": "wrong password"}).status_code == 400
+    assert client.post("/api/signin", json={"username": name.upper(), "password": "a long password"}).status_code == 200
+    client.post("/api/signout", json={})
+
+
+def test_a_taken_username_doesnt_spend_the_invite(client, invite):
+    other, name = auth.new_invite_code(), "pytest-taken"
+    with db.connect() as conn:
+        db.create_invite(conn, other, "player", 1, None, "test", "pytest")
+        db.create_account(conn, other, name, auth.hash_password("a long password"))
+    r = client.post("/api/signup", json={"invite_code": invite, "username": name.upper(), "password": "a long password"})
+    assert "taken" in r.json()["detail"]
+    with db.connect() as conn:
+        assert conn.execute("SELECT uses FROM invites WHERE code = %s", (invite,)).fetchone()[0] == 0
+
+
+def test_changes_need_json_and_a_session(client):
+    assert client.post("/api/signin", content="username=a&password=b",
+                       headers={"Content-Type": "application/x-www-form-urlencoded"}).status_code == 415
+    assert client.post("/api/leagues/1/join", json={}).status_code == 401

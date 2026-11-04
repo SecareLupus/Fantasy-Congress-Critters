@@ -17,9 +17,10 @@
 - Decide whether corrections to settled weeks carry forward into the next unsettled week, or wait for a manual correction window (today: reported as drift, not applied)
 - Host the daily update (scheduler, alerting on a non-zero exit) once there is a production server
 - [x] Read-only website: leagues, standings, rosters, market and critter pages (`web/`, `critters serve`)
-- Website accounts: invite codes and passwords, sessions, rosters owned by accounts instead of typed player names, joining a league
+- [x] Website accounts: invite codes and passwords, sessions, rosters owned by accounts, joining official leagues (`critters invite`, `critters account`)
+- Password reset without an admin (needs an email sender), if the beta outgrows hand resets
 - Trading from the website: buy and drop from the market and roster pages (rosters are already locked per trade)
-- Game master pages: create a league from a preset, change its settings before it starts, invite players
+- Game master pages: create a league from a preset, change its settings before it starts, invite players to private leagues
 - Choose a fallback for the committee participation multiplier where committees don't publish recorded votes (most Senate committees)
 - Choose an election odds source (deferred with candidate drafting)
 - Add concrete normalization mappings for action text parsing, including edge cases,

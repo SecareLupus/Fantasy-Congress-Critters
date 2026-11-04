@@ -1,4 +1,4 @@
-import { Link, Route, Routes, useSearchParams } from "react-router-dom";
+import { Link, Route, Routes, useLocation, useSearchParams } from "react-router-dom";
 import { useApi, useAsOf, type Status } from "./api";
 import { when } from "./format";
 import Critter from "./pages/Critter";
@@ -6,6 +6,8 @@ import Home from "./pages/Home";
 import League from "./pages/League";
 import Market from "./pages/Market";
 import Roster from "./pages/Roster";
+import SignIn from "./pages/SignIn";
+import { useSession } from "./session";
 
 function AsOf() {
   const [params, setParams] = useSearchParams();
@@ -29,6 +31,24 @@ function AsOf() {
   );
 }
 
+function Account() {
+  const { me, loaded, signOut } = useSession();
+  const location = useLocation();
+  if (!loaded) return null;
+  if (!me) {
+    if (["/signin", "/signup"].includes(location.pathname)) return null;
+    return <Link to={`/signin?next=${encodeURIComponent(location.pathname + location.search)}`}>Sign in</Link>;
+  }
+  return (
+    <span className="account">
+      {me.username}
+      <button type="button" className="link" onClick={signOut}>
+        Sign out
+      </button>
+    </span>
+  );
+}
+
 function Freshness() {
   const { data } = useApi<Status>("/api/status");
   if (!data) return null;
@@ -49,7 +69,10 @@ export default function App() {
         <Link to={`/${query()}`} className="brand">
           Fantasy Congress Critters
         </Link>
-        <AsOf />
+        <div className="header-right">
+          <AsOf />
+          <Account />
+        </div>
       </header>
       <main className="main">
         <Routes>
@@ -58,6 +81,8 @@ export default function App() {
           <Route path="/leagues/:leagueId/market" element={<Market />} />
           <Route path="/leagues/:leagueId/rosters/:rosterId" element={<Roster />} />
           <Route path="/critters/:bioguide" element={<Critter />} />
+          <Route path="/signin" element={<SignIn />} />
+          <Route path="/signup" element={<SignIn signup />} />
           <Route path="*" element={<p>Page not found.</p>} />
         </Routes>
       </main>

@@ -1,7 +1,9 @@
-import { Link, useParams } from "react-router-dom";
-import { useApi, useAsOf, type League as LeagueData, type Settings } from "../api";
+import { useState } from "react";
+import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
+import { post, useApi, useAsOf, type League as LeagueData, type Settings } from "../api";
 import { day, dollars, leagueType, pts } from "../format";
 import Loading from "../Loading";
+import { useSession } from "../session";
 
 export function Rules({ settings }: { settings: Settings }) {
   const slots = settings.roster_rules.chamber_slots;
@@ -27,11 +29,48 @@ export function Rules({ settings }: { settings: Settings }) {
   );
 }
 
+/** Join with the signed-in account, or a prompt to sign in first. */
+function Join({ league }: { league: LeagueData }) {
+  const { me, refresh } = useSession();
+  const navigate = useNavigate();
+  const location = useLocation();
+  const { query } = useAsOf();
+  const [error, setError] = useState<string | null>(null);
+  if (!me) {
+    return (
+      <p className="notice">
+        <Link to={`/signin?next=${encodeURIComponent(location.pathname)}`}>Sign in</Link> to join this league.
+      </p>
+    );
+  }
+  const join = async () => {
+    setError(null);
+    try {
+      const { roster_id } = await post<{ roster_id: number }>(`/api/leagues/${league.league_id}/join`);
+      await refresh();
+      navigate(`/leagues/${league.league_id}/rosters/${roster_id}${query()}`);
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  };
+  return (
+    <div className="notice">
+      <button type="button" className="button" onClick={join}>
+        Join {league.name}
+      </button>{" "}
+      as {me.username}. You'll start with {dollars(league.settings.budget_rules.annual_budget)} to spend on critters.
+      {error && <p className="error">{error}</p>}
+    </div>
+  );
+}
+
 export default function League() {
   const { leagueId } = useParams();
   const { on, query } = useAsOf();
+  const { me } = useSession();
   const { data, error } = useApi<LeagueData>(`/api/leagues/${leagueId}${query()}`);
   if (!data) return <Loading error={error} />;
+  const mine = me?.rosters.find((r) => r.league_id === data.league_id);
   return (
     <>
       <p className="crumbs">
@@ -42,6 +81,15 @@ export default function League() {
         {leagueType(data.league_type)} league, {day(data.start_date)} to {day(data.end_date)} · ruleset{" "}
         {data.ruleset_version} · run by {data.created_by}
       </p>
+      {mine ? (
+        <p>
+          <Link className="button" to={`/leagues/${data.league_id}/rosters/${mine.roster_id}${query()}`}>
+            Your roster
+          </Link>
+        </p>
+      ) : (
+        data.open_to_join && !on && <Join league={data} />
+      )}
       <div className="split">
         <section>
           <h2>Standings</h2>
@@ -62,7 +110,7 @@ export default function League() {
                 </thead>
                 <tbody>
                   {data.standings.map((s) => (
-                    <tr key={s.roster_id}>
+                    <tr key={s.roster_id} className={s.roster_id === mine?.roster_id ? "mine" : ""}>
                       <td className="num">{s.rank}</td>
                       <td>
                         <Link to={`/leagues/${data.league_id}/rosters/${s.roster_id}${query()}`}>{s.player}</Link>

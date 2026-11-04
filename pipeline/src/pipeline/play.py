@@ -103,12 +103,13 @@ def one_critter(conn, text: str, among: list[str] | None = None) -> tuple[str, s
     return found[0]
 
 
-def join(conn, league: dict, player: str, day: date) -> int:
+def join(conn, league: dict, player: str, day: date, account_id: int | None = None) -> int:
     if day >= league["end_date"]:
         raise Problem(f"league {league['league_id']} ended on {league['end_date']}")
-    if db.rosters(conn, league["league_id"], player):
+    if any(r["player"].lower() == player.lower() or (account_id and r["account_id"] == account_id)
+           for r in db.rosters(conn, league["league_id"])):
         raise Problem(f"{player} already has a roster in league {league['league_id']}")
-    return db.join_league(conn, league["league_id"], player, day)
+    return db.join_league(conn, league["league_id"], player, day, account_id)
 
 
 def buy(conn, league: dict, roster: dict, m: Market, bioguide: str, day: date) -> Holding:
