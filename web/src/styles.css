@@ -408,3 +408,73 @@ ul.plain {
 ul.plain li {
   padding: 0.2rem 0;
 }
+
+.small-button {
+  font-size: 0.85rem;
+  padding: 0.15rem 0.6rem;
+  cursor: pointer;
+}
+.small-button.primary {
+  background: var(--accent);
+  color: var(--accent-text);
+  border-color: var(--accent);
+  font-weight: 600;
+}
+.small-button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+.confirm {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+  white-space: normal;
+  max-width: 22rem;
+}
+
+.form.wide {
+  max-width: 34rem;
+}
+.form.left {
+  margin-left: 0;
+}
+.pair {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.8rem;
+}
+.pair > label {
+  flex: 1 1 9rem;
+}
+fieldset.settings {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.8rem 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
+  margin: 0;
+}
+.form label.check {
+  flex-direction: row;
+  align-items: center;
+  gap: 0.5rem;
+}
+.pre {
+  white-space: pre-wrap;
+}
+.wide-input {
+  flex: 1 1 20rem;
+  min-width: 0;
+}
+.title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+code {
+  font-size: 0.9em;
+}

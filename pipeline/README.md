@@ -61,7 +61,7 @@ Raw files land in `data/raw/` (gitignored). `load` is idempotent: each bill and 
 - `rosters`, `transactions`: a player's roster in a league, and its purchases (with the price paid and the weeks reserved) and drops.
 - `source_syncs`: every attempt by `critters update` to bring a source up to date, with what changed, the newest data afterward, and the error if it failed.
 - `settled_weeks`, `settled_points`: weeks whose points are final for every league using a ruleset, and those points.
-- `invites`, `accounts`, `sessions`: website accounts, the invite codes that made them, and signed-in browsers (only a hash of each session token). A roster joined on the site points at its account.
+- `invites`, `accounts`, `sessions`: website accounts, the invite codes that made them, and signed-in browsers (only a hash of each session token). A roster joined on the site points at its account, and a league made on the site at its owner.
 - `critters`, `critter_terms`, `committees`: reference data.
 
 ## Scoring
@@ -74,7 +74,7 @@ Raw files land in `data/raw/` (gitignored). `load` is idempotent: each bill and 
 
 ## Leagues
 
-League rules are settings on each league, set by a game master (Design-Rulesets §6A.7), not constants in the code or the ruleset. `leagues.py` defines which settings exist and their limits; values come from presets (`presets/standard.toml`, loaded with `critters league preset save`) and from the game master's `--set path=value` overrides at `critters league create`. A league keeps its own copy of the settings and of its ruleset, and both are frozen once it starts (`critters league update` refuses after that). Official league types need `--role gamemaker`. `critters price --league ID` prices with the league's ruleset and checks its budget.
+League rules are settings on each league, set by a game master (Design-Rulesets §6A.7), not constants in the code or the ruleset. `leagues.py` defines which settings exist and their limits; values come from presets (`presets/standard.toml`, loaded with `critters league preset save`) and from the game master's `--set path=value` overrides at `critters league create`. A league keeps its own copy of the settings and of its ruleset, and both are frozen once it starts (`critters league update` refuses after that). Official league types need `--role gamemaker`. A private league gets a join code (`critters league show` prints it). `critters price --league ID` prices with the league's ruleset and checks its budget. Creating and updating leagues goes through `play.create_league` and `play.update_league`, shared with the website.
 
 Players trade with `critters league join`, `buy`, `drop`, `roster` and `standings` (`ledger.py`, Design-Economy §5.2). Each takes `--on DATE` (default today), so a past season can be replayed; a roster's transactions can't be dated before its last one. A league scores and prices from the latest run of each Congress scored with exactly its frozen ruleset (`critters score --league ID` makes one), and its sessions must be priced in that run.
 
@@ -107,7 +107,7 @@ To schedule it, a crontab line such as:
 
 ## Web API
 
-`critters serve` runs the API behind the site (`api.py`, FastAPI): leagues with their standings, rosters, a league's market, critters and where their points came from, and data freshness from `source_syncs`; accounts, and joining a league. Trading from the site comes next. Every view takes `?on=DATE` to show the game as it stood that day, so the 2024 backtest can be browsed. It shares the league logic in `play.py` with the `league` commands, so the site and the command line agree. Weeks still to come are left out of a critter's points: a live run scores them at today's seats and attendance, which aren't points yet. When `web/dist` exists (`npm run build` in `web/`), `serve` also serves the site. See [web/README.md](../web/README.md) for development.
+`critters serve` runs the API behind the site (`api.py`, FastAPI): leagues with their standings, rosters, a league's market, critters and where their points came from, and data freshness from `source_syncs`; accounts, joining a league, and buying and dropping critters (`play.buy` and `play.drop`, the same code as `critters league buy` and `drop`, which lock the roster until the trade commits so two at once can't both spend the balance). Every view takes `?on=DATE` to show the game as it stood that day, so the 2024 backtest can be browsed. It shares the league logic in `play.py` with the `league` commands, so the site and the command line agree. Weeks still to come are left out of a critter's points: a live run scores them at today's seats and attendance, which aren't points yet. When `web/dist` exists (`npm run build` in `web/`), `serve` also serves the site. See [web/README.md](../web/README.md) for development.
 
 ### Accounts
 
@@ -117,7 +117,12 @@ The beta is invite-only (`auth.py`). `critters invite create` makes codes, each 
 - Signing in sets an HttpOnly, SameSite=Lax cookie with a random token, good for 30 days; the database keeps only its SHA-256. Set `CRITTERS_SECURE_COOKIE=1` when serving over HTTPS.
 - Requests that change anything must be JSON, which browsers won't send across sites without asking, so other sites can't act for a signed-in player.
 - Ten failed sign-ins for a username or from an address within 15 minutes block it for the rest of the window (in memory, per process).
-- A signed-in player can join an official league that hasn't ended, on today's date. Private leagues will be joined by invitation from their game master.
+- A signed-in player can join an official league that hasn't ended, on today's date. A private league needs its join code, which comes in the link its game master shares.
+- Any account can make a private league on the site and becomes its commissioner; GameMaker accounts can also make official ones. Site leagues score with `rulesets/default.toml` and record their owner (`leagues.owner_account_id`).
+- A league's game master (its owner, or any GameMaker for an official league) changes its name and settings and removes players until it starts, and can replace a private league's join code, which stops the old link working.
+- Private leagues are unlisted: the league list shows them only to their players and game master.
+- GameMakers make invite codes on the site too (`/invites`), the same as `critters invite create`.
+- A player buys and drops for their own roster only, always on today's date; browsing with `?on=` never trades.
 
 ## Normalization notes
 

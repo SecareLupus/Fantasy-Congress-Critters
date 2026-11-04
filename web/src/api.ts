@@ -50,6 +50,8 @@ export type League = LeagueSummary & {
   creator_role: string;
   frozen: boolean;
   open_to_join: boolean;
+  manageable: boolean;
+  join_code: string | null;
   settings: Settings;
   years: Year[];
   standings: Standing[];
@@ -77,6 +79,7 @@ export type RosterCritter = Card & {
   left_office: string | null;
   power: number;
   productivity: number;
+  drop_returns: number | null;
 };
 
 export type Roster = {
@@ -84,6 +87,7 @@ export type Roster = {
   player: string;
   joined_on: string;
   as_of: string;
+  mine: boolean;
   league: LeagueSummary & { settings: Settings };
   total: number;
   years: (Year & {
@@ -109,13 +113,32 @@ export type Price = {
 
 export type Listing = Card & Price & { cost_now: number; points: number; owners: string[] };
 
+export type MyHoldings = { roster_id: number; budget: number; available: number; held: string[]; house: number; senate: number };
+
 export type Market = Year & {
   league: LeagueSummary & { settings: Settings };
   as_of: string;
   years: number[];
   closed: string | null;
+  closed_detail: string | null;
   weeks_left?: number;
   critters: Listing[];
+  mine: MyHoldings | null;
+};
+
+export type TradeResult = {
+  bioguide_id: string;
+  name: string;
+  year: number;
+  first_week: number;
+  last_week: number;
+  drop_week: number | null;
+  signing_fee: number;
+  weekly_fee: number;
+  extra_fee: number;
+  points_penalty: number;
+  available: number;
+  budget: number;
 };
 
 export type Week = {
@@ -158,9 +181,11 @@ export type Status = {
   updated_at: string | null;
 };
 
-/** Fetch an API path; null skips the request. */
-export function useApi<T>(path: string | null): { data?: T; error?: string } {
+/** Fetch an API path; null skips the request. reload() fetches it again, keeping what's
+shown until the new data arrives. */
+export function useApi<T>(path: string | null): { data?: T; error?: string; reload: () => void } {
   const [state, setState] = useState<{ path?: string; data?: T; error?: string }>({});
+  const [version, setVersion] = useState(0);
   useEffect(() => {
     if (!path) return;
     let live = true;
@@ -175,9 +200,10 @@ export function useApi<T>(path: string | null): { data?: T; error?: string } {
     return () => {
       live = false;
     };
-  }, [path]);
+  }, [path, version]);
+  const reload = () => setVersion((v) => v + 1);
   // Don't show the previous page's data while the next one loads.
-  return state.path === path ? { data: state.data, error: state.error } : {};
+  return state.path === path ? { data: state.data, error: state.error, reload } : { reload };
 }
 
 /** The date the game is shown as of (?on=), which links carry from page to page. */
@@ -214,3 +240,26 @@ export async function post<T>(path: string, body: object = {}): Promise<T> {
   }
   return data as T;
 }
+
+export type LeagueOptions = {
+  presets: Record<string, { description: string | null; settings: Settings }>;
+  official_types: string[];
+  private_types: string[];
+  can_create_official: boolean;
+  congress: number;
+  session: number;
+  year: number;
+  ruleset_version: string;
+};
+
+export type Invite = {
+  code: string;
+  role: string;
+  uses: number;
+  max_uses: number;
+  expires_at: string | null;
+  note: string | null;
+  created_by: string;
+  created_at: string;
+  accounts: string[];
+};

@@ -165,7 +165,8 @@ def league_dates(league_type: str, *, congress: int | None = None, session: int 
     def need(**values):
         missing = [k for k, v in values.items() if v is None]
         if missing:
-            raise ValueError(f"a {league_type} league needs --{' and --'.join(missing)}")
+            article = "an" if league_type[0] in "aeiou" else "a"
+            raise ValueError(f"{article} {league_type} league needs a {' and a '.join(missing)}")
 
     if league_type == "session":
         need(congress=congress, session=session)

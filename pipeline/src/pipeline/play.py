@@ -5,10 +5,11 @@ module reads and writes the database around them. Anything a player or game mast
 wrong raises Problem, whose message is meant for them.
 """
 
+import secrets
 from dataclasses import dataclass
 from datetime import date
 
-from . import db, ledger, scoring
+from . import db, leagues, ledger, scoring
 from .ledger import Holding
 
 
@@ -36,6 +37,57 @@ def roster(conn, league: dict, player: str) -> dict:
     if not found:
         raise NotFound(f"{player} has no roster in league {league['league_id']}: critters league join")
     return found[0]
+
+
+def _check_settings(settings: dict) -> None:
+    errors = leagues.validate(settings)
+    if errors:
+        raise Problem("invalid league settings:\n  " + "\n  ".join(errors))
+
+
+def new_join_code() -> str:
+    return secrets.token_urlsafe(9)
+
+
+def create_league(conn, *, name: str, league_type: str, settings: dict, preset: str | None, ruleset: scoring.Ruleset,
+                  created_by: str, role: str, timing: str | None = None, owner_account_id: int | None = None,
+                  **dates) -> int:
+    """A new league with these settings (already resolved from a preset). Official leagues
+    are made by GameMakers; a private one gets a join code for its game master to share.
+    `dates` are what the league type needs: congress, session, year, or start and end."""
+    name = name.strip()
+    if not name:
+        raise Problem("the league needs a name")
+    if league_type not in leagues.OFFICIAL_TYPES + leagues.PRIVATE_TYPES:
+        raise Problem(f"unknown league type {league_type!r}")
+    official = league_type in leagues.OFFICIAL_TYPES
+    if official and role != "gamemaker":
+        raise Problem("official leagues are created by GameMakers")
+    timing = timing if league_type == "standard_private" else league_type
+    if timing not in leagues.OFFICIAL_TYPES + ("flexible_private",):
+        raise Problem("a standard_private league follows one of the official timings: " + ", ".join(leagues.OFFICIAL_TYPES))
+    try:
+        start, end = leagues.league_dates(timing, **dates)
+    except ValueError as e:
+        raise Problem(str(e))
+    _check_settings(settings)
+    return db.create_league(
+        conn, name=name, league_type=league_type, visibility="official" if official else "private",
+        start_date=start, end_date=end, ruleset_version=ruleset.version, ruleset=ruleset.raw, preset=preset,
+        settings=settings, created_by=created_by, creator_role=role, owner_account_id=owner_account_id,
+        join_code=None if official else new_join_code())
+
+
+def update_league(conn, league: dict, settings: dict, today: date, ruleset: scoring.Ruleset | None = None,
+                  name: str | None = None) -> None:
+    """Change a league's settings, ruleset or name, which is only allowed before it starts."""
+    if not leagues.can_change(league["start_date"], today):
+        raise Problem(f"league {league['league_id']} started on {league['start_date']}: its settings and ruleset are frozen")
+    if name is not None and not name.strip():
+        raise Problem("the league needs a name")
+    _check_settings(settings)
+    ruleset = ruleset or scoring.Ruleset(league["ruleset_version"], league["ruleset"])
+    db.update_league(conn, league["league_id"], settings, ruleset.version, ruleset.raw, name.strip() if name else None)
 
 
 @dataclass

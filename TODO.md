@@ -19,8 +19,9 @@
 - [x] Read-only website: leagues, standings, rosters, market and critter pages (`web/`, `critters serve`)
 - [x] Website accounts: invite codes and passwords, sessions, rosters owned by accounts, joining official leagues (`critters invite`, `critters account`)
 - Password reset without an admin (needs an email sender), if the beta outgrows hand resets
-- Trading from the website: buy and drop from the market and roster pages (rosters are already locked per trade)
-- Game master pages: create a league from a preset, change its settings before it starts, invite players to private leagues
+- [x] Trading from the website: buy from the market, drop from the roster
+- [x] Game master pages: create a league from a preset, change its settings before it starts, join links for private leagues, remove players before the start, invite codes for GameMakers
+- Choose a ruleset when creating a league on the website (today: the default ruleset)
 - Choose a fallback for the committee participation multiplier where committees don't publish recorded votes (most Senate committees)
 - Choose an election odds source (deferred with candidate drafting)
 - Add concrete normalization mappings for action text parsing, including edge cases,

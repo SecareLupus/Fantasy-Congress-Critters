@@ -439,3 +439,8 @@ CREATE INDEX IF NOT EXISTS sessions_account ON sessions (account_id);
 -- Rosters made with `critters league join` have none.
 ALTER TABLE rosters ADD COLUMN IF NOT EXISTS account_id bigint REFERENCES accounts ON DELETE SET NULL;
 CREATE UNIQUE INDEX IF NOT EXISTS rosters_account ON rosters (league_id, account_id);
+
+-- A league made on the website belongs to the account that made it, its game master.
+-- A private league is joined with its join code, which the game master shares.
+ALTER TABLE leagues ADD COLUMN IF NOT EXISTS owner_account_id bigint REFERENCES accounts ON DELETE SET NULL;
+ALTER TABLE leagues ADD COLUMN IF NOT EXISTS join_code text;

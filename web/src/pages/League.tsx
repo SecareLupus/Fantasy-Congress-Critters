@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
+import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { post, useApi, useAsOf, type League as LeagueData, type Settings } from "../api";
 import { day, dollars, leagueType, pts } from "../format";
 import Loading from "../Loading";
@@ -35,18 +35,25 @@ function Join({ league }: { league: LeagueData }) {
   const navigate = useNavigate();
   const location = useLocation();
   const { query } = useAsOf();
+  const [params] = useSearchParams();
   const [error, setError] = useState<string | null>(null);
+  // A private league is joined with the code in its link (?join=), which its game master has.
+  const code = params.get("join") ?? league.join_code;
+  if (league.visibility === "private" && !code) {
+    return <p className="notice">This league is private. Ask its game master for the join link.</p>;
+  }
   if (!me) {
     return (
       <p className="notice">
-        <Link to={`/signin?next=${encodeURIComponent(location.pathname)}`}>Sign in</Link> to join this league.
+        <Link to={`/signin?next=${encodeURIComponent(location.pathname + location.search)}`}>Sign in</Link> to join this
+        league.
       </p>
     );
   }
   const join = async () => {
     setError(null);
     try {
-      const { roster_id } = await post<{ roster_id: number }>(`/api/leagues/${league.league_id}/join`);
+      const { roster_id } = await post<{ roster_id: number }>(`/api/leagues/${league.league_id}/join`, { code });
       await refresh();
       navigate(`/leagues/${league.league_id}/rosters/${roster_id}${query()}`);
     } catch (err) {
@@ -80,6 +87,12 @@ export default function League() {
       <p className="muted">
         {leagueType(data.league_type)} league, {day(data.start_date)} to {day(data.end_date)} · ruleset{" "}
         {data.ruleset_version} · run by {data.created_by}
+        {data.manageable && (
+          <>
+            {" "}
+            · <Link to={`/leagues/${data.league_id}/manage`}>Manage</Link>
+          </>
+        )}
       </p>
       {mine ? (
         <p>

@@ -1,9 +1,9 @@
 """The web API behind the site (Design-Pages §13): leagues and their standings, rosters,
-the market, critters, and how fresh the data is; accounts (auth.py) and joining a league.
-Trading comes next.
+the market, critters, and how fresh the data is; accounts (auth.py), joining a league,
+and buying and dropping critters.
 
 Every view takes `on`, the date to show the game as of (default: today), so a past
-season can be browsed as it stood; joining always happens today. Run it with
+season can be browsed as it stood; joining and trading always happen today. Run it with
 `critters serve`; in production it also serves the built site from web/dist.
 
 Requests that change anything must send JSON. Browsers can't send JSON across sites
@@ -13,7 +13,7 @@ acting for a signed-in player.
 
 import os
 from contextlib import asynccontextmanager
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 
 import psycopg
 from fastapi import Depends, FastAPI, HTTPException, Request, Response
@@ -141,19 +141,151 @@ def whoami(conn=Depends(connection), me: dict | None = Depends(signed_in)) -> di
     return _me(conn, me) if me else None
 
 
+class JoinRequest(BaseModel):
+    code: str | None = None
+
+
 @app.post("/api/leagues/{league_id}/join", dependencies=[Depends(json_only)])
-def join(league_id: int, conn=Depends(connection), me: dict = Depends(account)) -> dict:
+def join(league_id: int, body: JoinRequest | None = None, conn=Depends(connection),
+         me: dict = Depends(account)) -> dict:
+    """Join on today's date. A private league needs the join code its game master shares."""
     league = play.league(conn, league_id)
-    if not _open_to_join(league):
-        raise play.Problem("only official leagues that haven't ended can be joined from the site for now")
+    if league["visibility"] == "private" and (body is None or (body.code or "").strip() != league["join_code"]):
+        raise play.Problem(f"{league['name']} is private: ask its game master for the join link")
     roster_id = play.join(conn, league, me["username"], _today(), me["account_id"])
     return {"roster_id": roster_id}
 
 
-def _open_to_join(league: dict) -> bool:
-    """Private leagues will take invitations from their game master; until then only
-    official leagues can be joined from the site."""
-    return league["visibility"] == "official" and _today() < league["end_date"]
+def _can_manage(league: dict, me: dict | None) -> bool:
+    """The game master who made it, or any GameMaker for an official league."""
+    if me is None:
+        return False
+    return league["owner_account_id"] == me["account_id"] or (
+        league["visibility"] == "official" and me["role"] == "gamemaker")
+
+
+def _managed(conn, league_id: int, me: dict) -> dict:
+    league = play.league(conn, league_id)
+    if not _can_manage(league, me):
+        raise play.Problem(f"only {league['name']}'s game master can do that")
+    return league
+
+
+class LeagueSettings(BaseModel):
+    name: str | None = None
+    settings: dict
+
+
+class NewLeague(BaseModel):
+    name: str
+    league_type: str
+    timing: str | None = None
+    congress: int | None = None
+    session: int | None = None
+    year: int | None = None
+    start: date | None = None
+    end: date | None = None
+    preset: str
+    settings: dict
+
+
+@app.get("/api/league-options")
+def league_options(conn=Depends(connection), me: dict | None = Depends(signed_in)) -> dict:
+    """What a game master chooses from when making a league: presets, the settings and
+    their limits, league types, and today's Congress for defaults."""
+    today = _today()
+    year = play.legislative_year(today)
+    return {
+        "presets": {name: {"description": p["description"], "settings": p["settings"]}
+                    for name, p in db.presets(conn).items()},
+        "settings": [{"path": s.path, "description": s.description, "minimum": s.minimum, "maximum": s.maximum,
+                      "choices": s.choices, "nullable": s.nullable} for s in leagues.SETTINGS],
+        "official_types": leagues.OFFICIAL_TYPES, "private_types": leagues.PRIVATE_TYPES,
+        "can_create_official": bool(me and me["role"] == "gamemaker"),
+        "congress": (year - 1787) // 2, "session": (year - 1787) % 2 + 1, "year": today.year,
+        "ruleset_version": scoring.Ruleset.load(DEFAULT_RULESET).version,
+    }
+
+
+@app.post("/api/leagues", dependencies=[Depends(json_only)])
+def create_league(body: NewLeague, conn=Depends(connection), me: dict = Depends(account)) -> dict:
+    """Any account can make a private league and be its commissioner; GameMakers make
+    official ones. Leagues score with the current default ruleset."""
+    presets = db.presets(conn)
+    if body.preset not in presets:
+        raise play.Problem(f"no preset {body.preset!r}")
+    role = "gamemaker" if body.league_type in leagues.OFFICIAL_TYPES else "commissioner"
+    if role == "gamemaker" and me["role"] != "gamemaker":
+        raise play.Problem("official leagues are created by GameMakers")
+    dates = {k: v for k in ("congress", "session", "year", "start", "end") if (v := getattr(body, k)) is not None}
+    league_id = play.create_league(
+        conn, name=body.name, league_type=body.league_type, timing=body.timing, settings=body.settings,
+        preset=body.preset, ruleset=scoring.Ruleset.load(DEFAULT_RULESET), created_by=me["username"], role=role,
+        owner_account_id=me["account_id"], **dates)
+    return {"league_id": league_id}
+
+
+@app.post("/api/leagues/{league_id}/settings", dependencies=[Depends(json_only)])
+def update_settings(league_id: int, body: LeagueSettings, conn=Depends(connection),
+                    me: dict = Depends(account)) -> dict:
+    league = _managed(conn, league_id, me)
+    play.update_league(conn, league, body.settings, _today(), name=body.name)
+    return {"league_id": league_id}
+
+
+@app.post("/api/leagues/{league_id}/join-code", dependencies=[Depends(json_only)])
+def new_join_code(league_id: int, conn=Depends(connection), me: dict = Depends(account)) -> dict:
+    """A new join code for a private league; the old link stops working."""
+    league = _managed(conn, league_id, me)
+    if league["visibility"] != "private":
+        raise play.Problem("official leagues are open to everyone; they have no join code")
+    code = play.new_join_code()
+    db.set_join_code(conn, league_id, code)
+    return {"join_code": code}
+
+
+@app.post("/api/leagues/{league_id}/rosters/{roster_id}/remove", dependencies=[Depends(json_only)])
+def remove_player(league_id: int, roster_id: int, conn=Depends(connection), me: dict = Depends(account)) -> dict:
+    """Take a player out of a league before it starts, when nothing has scored."""
+    league = _managed(conn, league_id, me)
+    if not leagues.can_change(league["start_date"], _today()):
+        raise play.Problem(f"{league['name']} has started: players can't be removed")
+    if not any(r["roster_id"] == roster_id for r in db.rosters(conn, league_id)):
+        raise play.NotFound(f"no roster {roster_id} in league {league_id}")
+    db.remove_roster(conn, roster_id)
+    return {}
+
+
+class NewInvites(BaseModel):
+    role: str = "player"
+    uses: int = 1
+    days: int = 30
+    count: int = 1
+    note: str | None = None
+
+
+def _gamemaker(me: dict = Depends(account)) -> dict:
+    if me["role"] != "gamemaker":
+        raise play.Problem("only GameMakers can do that")
+    return me
+
+
+@app.get("/api/invites")
+def invite_list(conn=Depends(connection), me: dict = Depends(_gamemaker)) -> list[dict]:
+    return db.invites(conn)
+
+
+@app.post("/api/invites", dependencies=[Depends(json_only)])
+def create_invites(body: NewInvites, conn=Depends(connection), me: dict = Depends(_gamemaker)) -> dict:
+    if body.role not in auth.ROLES:
+        raise play.Problem(f"role must be one of {', '.join(auth.ROLES)}")
+    if not 1 <= body.uses <= 1000 or not 1 <= body.count <= 100 or body.days < 0:
+        raise play.Problem("uses is 1 to 1,000, count 1 to 100, and days 0 (never expires) or more")
+    expires = datetime.now(timezone.utc) + timedelta(days=body.days) if body.days else None
+    codes = [auth.new_invite_code() for _ in range(body.count)]
+    for code in codes:
+        db.create_invite(conn, code, body.role, body.uses, expires, body.note, me["username"])
+    return {"codes": codes}
 
 
 def _today() -> date:
@@ -206,12 +338,22 @@ def status(conn=Depends(connection)) -> dict:
 
 
 @app.get("/api/leagues")
-def league_list(conn=Depends(connection)) -> list[dict]:
-    return [_summary(league, len(db.rosters(conn, league["league_id"]))) for league in db.leagues(conn)]
+def league_list(conn=Depends(connection), me: dict | None = Depends(signed_in)) -> list[dict]:
+    """Official leagues, and the private ones the viewer plays in or runs. Other private
+    leagues are unlisted: only their link finds them."""
+    out = []
+    for league in db.leagues(conn):
+        rosters = db.rosters(conn, league["league_id"])
+        if league["visibility"] == "private" and not (
+                _can_manage(league, me) or any(me and r["account_id"] == me["account_id"] for r in rosters)):
+            continue
+        out.append(_summary(league, len(rosters)))
+    return out
 
 
 @app.get("/api/leagues/{league_id}")
-def league_detail(league_id: int, on: date | None = None, conn=Depends(connection)) -> dict:
+def league_detail(league_id: int, on: date | None = None, conn=Depends(connection),
+                  me: dict | None = Depends(signed_in)) -> dict:
     on = on or _today()
     league = play.league(conn, league_id)
     markets = play.league_years(conn, league)
@@ -221,7 +363,9 @@ def league_detail(league_id: int, on: date | None = None, conn=Depends(connectio
         "ruleset_version": league["ruleset_version"], "preset": league["preset"],
         "created_by": league["created_by"], "creator_role": league["creator_role"],
         "frozen": not leagues.can_change(league["start_date"], on),
-        "open_to_join": _open_to_join(league),
+        "open_to_join": _today() < league["end_date"],
+        "manageable": (manageable := _can_manage(league, me)),
+        "join_code": league["join_code"] if manageable else None,
         "settings": league["settings"],
         "years": [_year(m, play.final_weeks(conn, league, m), on) for m in markets],
         "standings": [{"rank": i, "roster_id": s.roster_id, "player": s.player, "total": s.total,
@@ -231,12 +375,14 @@ def league_detail(league_id: int, on: date | None = None, conn=Depends(connectio
 
 
 @app.get("/api/leagues/{league_id}/rosters/{roster_id}")
-def roster_detail(league_id: int, roster_id: int, on: date | None = None, conn=Depends(connection)) -> dict:
+def roster_detail(league_id: int, roster_id: int, on: date | None = None, conn=Depends(connection),
+                  me: dict | None = Depends(signed_in)) -> dict:
     on = on or _today()
     league = play.league(conn, league_id)
     roster = next((r for r in db.rosters(conn, league_id) if r["roster_id"] == roster_id), None)
     if roster is None:
         raise play.NotFound(f"no roster {roster_id} in league {league_id}")
+    mine = me is not None and roster["account_id"] == me["account_id"]
     markets = play.league_years(conn, league)
     scored = play.roster_points(conn, league, roster, markets, on)
     annual = league["settings"]["budget_rules"]["annual_budget"]
@@ -255,29 +401,35 @@ def roster_detail(league_id: int, roster_id: int, on: date | None = None, conn=D
                 "status": state, "made_on": h.made_on, "first_week": h.first_week, "last_week": h.last_week,
                 "session_cost": h.session_cost, "signing_fee": h.signing_fee, "weekly_fee": h.weekly_fee,
                 "dropped_on": h.dropped_on if h.dropped(on) else None, "drop_week": h.drop_week if h.dropped(on) else None,
-                "left_office": h.left_office, "power": power, "productivity": productivity})
+                "left_office": h.left_office, "power": power, "productivity": productivity,
+                "drop_returns": _drop_returns(m, h) if mine and state == "held" else None})
         years.append(_year(m, play.final_weeks(conn, league, m), on) | {
             "budget": {"budget": b.budget, "spent": b.spent, "reserved": b.reserved, "available": b.available},
             "power": s["power"], "productivity": s["productivity"], "penalties": s["penalties"],
             "total": s["power"] + s["productivity"] - s["penalties"], "critters": critters})
     return {"roster_id": roster_id, "player": roster["player"], "joined_on": roster["joined_on"], "as_of": on,
+            "mine": mine,
             "league": _summary(league, len(db.rosters(conn, league_id))) | {"settings": league["settings"]},
             "total": sum(y["total"] for y in years), "years": years}
 
 
 @app.get("/api/leagues/{league_id}/market")
-def market(league_id: int, year: int | None = None, on: date | None = None, conn=Depends(connection)) -> dict:
+def market(league_id: int, year: int | None = None, on: date | None = None, conn=Depends(connection),
+           me: dict | None = Depends(signed_in)) -> dict:
     on = on or _today()
     league = play.league(conn, league_id)
     markets = play.league_years(conn, league)
     m = _pick(markets, year, on)
     out = {"league": _summary(league, len(db.rosters(conn, league_id))) | {"settings": league["settings"]},
            "as_of": on, "years": [x.year for x in markets],
-           **_year(m, play.final_weeks(conn, league, m), on), "closed": None, "critters": []}
+           **_year(m, play.final_weeks(conn, league, m), on), "closed": None, "closed_detail": None,
+           "critters": [], "mine": _my_holdings(conn, league, m, me, on)}
     try:
         play.tradable(league, m)
     except play.Problem as e:
-        out["closed"] = str(e)
+        # Players see when it opens; the game master also sees what to run.
+        out["closed"] = f"The {m.year} market opens once {m.year} prices are published."
+        out["closed_detail"] = str(e) if _can_manage(league, me) or (me and me["role"] == "gamemaker") else None
         return out
     first = m.cal.next_week(on)
     if first is None:
@@ -300,6 +452,67 @@ def market(league_id: int, year: int | None = None, on: date | None = None, conn
         "cost_now": p["signing_fee"] + p["weekly_fee"] * weeks_left,
         "points": points.get(p["bioguide_id"], 0.0), "owners": owners.get(p["bioguide_id"], [])} for p in prices]
     return out
+
+
+def _my_roster(conn, league_id: int, me: dict | None) -> dict | None:
+    if me is None:
+        return None
+    return next((r for r in db.rosters(conn, league_id) if r["account_id"] == me["account_id"]), None)
+
+
+def _my_holdings(conn, league: dict, m: play.Market, me: dict | None, on: date) -> dict | None:
+    """The signed-in player's roster in this year of the market: budget, and who they hold."""
+    roster = _my_roster(conn, league["league_id"], me)
+    if roster is None:
+        return None
+    held = db.holdings(conn, roster["roster_id"], m.congress, m.session)
+    b = ledger.budget(held, m.cal, league["settings"]["budget_rules"]["annual_budget"], on)
+    active = [h for h in held if h.active(on)]
+    return {"roster_id": roster["roster_id"], "budget": b.budget, "available": b.available,
+            "held": [h.bioguide_id for h in active],
+            "house": sum(h.chamber == "rep" for h in active), "senate": sum(h.chamber == "sen" for h in active)}
+
+
+def _drop_returns(m: play.Market, h: ledger.Holding) -> float:
+    """The weekly fees a drop today would return: those of the weeks after this one."""
+    week = max(m.cal.next_week(_today()) or h.last_week + 1, h.first_week)
+    return h.weekly_fee * len([w for w in m.cal.weeks if week <= w <= h.last_week])
+
+
+class Trade(BaseModel):
+    bioguide_id: str
+    year: int | None = None
+
+
+def _trade(conn, league_id: int, body: Trade, me: dict) -> tuple[dict, dict, play.Market]:
+    league = play.league(conn, league_id)
+    roster = _my_roster(conn, league_id, me)
+    if roster is None:
+        raise play.Problem(f"join {league['name']} first")
+    m = play.market(conn, league, body.year or play.year_on(league, _today()))
+    return league, roster, m
+
+
+def _trade_result(conn, league: dict, roster: dict, m: play.Market, h: ledger.Holding) -> dict:
+    b = play.budget(conn, league, roster, m, _today())
+    return {"bioguide_id": h.bioguide_id, "name": db.names(conn, [h.bioguide_id]).get(h.bioguide_id),
+            "year": m.year, "first_week": h.first_week, "last_week": h.last_week, "drop_week": h.drop_week,
+            "signing_fee": h.signing_fee, "weekly_fee": h.weekly_fee, "extra_fee": h.extra_fee,
+            "points_penalty": h.points_penalty, "available": b.available, "budget": b.budget}
+
+
+@app.post("/api/leagues/{league_id}/buy", dependencies=[Depends(json_only)])
+def buy(league_id: int, body: Trade, conn=Depends(connection), me: dict = Depends(account)) -> dict:
+    league, roster, m = _trade(conn, league_id, body, me)
+    h = play.buy(conn, league, roster, m, body.bioguide_id.upper(), _today())
+    return _trade_result(conn, league, roster, m, h)
+
+
+@app.post("/api/leagues/{league_id}/drop", dependencies=[Depends(json_only)])
+def drop(league_id: int, body: Trade, conn=Depends(connection), me: dict = Depends(account)) -> dict:
+    league, roster, m = _trade(conn, league_id, body, me)
+    h = play.drop(conn, league, roster, m, body.bioguide_id.upper(), _today())
+    return _trade_result(conn, league, roster, m, h)
 
 
 @app.get("/api/critters/{bioguide}")

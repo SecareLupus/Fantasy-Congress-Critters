@@ -167,6 +167,8 @@ def _print_league(league: dict) -> None:
     print(f"  created by {league['created_by']} ({league['creator_role']}) {league['created_at']:%Y-%m-%d}")
     state = "open to changes until it starts" if leagues.can_change(league["start_date"], date.today()) else "started: frozen"
     print(f"  {state}")
+    if league["join_code"]:
+        print(f"  join code {league['join_code']}")
     for s in leagues.SETTINGS:
         print(f"  {s.path:<30} {json.dumps(leagues.get_path(league['settings'], s.path))}")
 
@@ -198,51 +200,34 @@ def cmd_preset_list(args) -> None:
 
 
 def cmd_league_create(args) -> None:
-    official = args.type in leagues.OFFICIAL_TYPES
-    role = args.role or ("gamemaker" if official else "commissioner")
-    if official and role != "gamemaker":
-        raise SystemExit("official leagues are created by GameMakers (--role gamemaker)")
-    timing = args.timing if args.type == "standard_private" else args.type
-    if timing not in leagues.OFFICIAL_TYPES + ("flexible_private",):
-        raise SystemExit("a standard_private league needs --timing, one of: " + ", ".join(leagues.OFFICIAL_TYPES))
+    role = args.role or ("gamemaker" if args.type in leagues.OFFICIAL_TYPES else "commissioner")
     try:
-        start, end = leagues.league_dates(timing, congress=args.congress, session=args.session,
-                                          year=args.year, start=args.start, end=args.end)
         overrides = leagues.parse_overrides(args.set or [])
     except ValueError as e:
         raise SystemExit(str(e))
-    ruleset = scoring.Ruleset.load(args.ruleset)
     with db.connect() as conn:
         db.init_schema(conn)
         preset = db.presets(conn).get(args.preset)
         if preset is None:
             raise SystemExit(f"no preset {args.preset!r}; save one with critters league preset save")
-        settings = leagues.resolve(preset["settings"], overrides)
-        _check_or_exit(settings)
-        league_id = db.create_league(
-            conn, name=args.name, league_type=args.type, visibility="official" if official else "private",
-            start_date=start, end_date=end, ruleset_version=ruleset.version, ruleset=ruleset.raw,
-            preset=args.preset, settings=settings, created_by=args.by, creator_role=role)
+        dates = {k: v for k in ("congress", "session", "year", "start", "end") if (v := getattr(args, k)) is not None}
+        league_id = play.create_league(
+            conn, name=args.name, league_type=args.type, timing=args.timing,
+            settings=leagues.resolve(preset["settings"], overrides), preset=args.preset,
+            ruleset=scoring.Ruleset.load(args.ruleset), created_by=args.by, role=role, **dates)
         _print_league(db.leagues(conn, league_id)[0])
 
 
 def cmd_league_update(args) -> None:
     with db.connect() as conn:
         db.init_schema(conn)
-        found = db.leagues(conn, args.league)
-        if not found:
-            raise SystemExit(f"no league {args.league}")
-        league = found[0]
-        if not leagues.can_change(league["start_date"], date.today()):
-            raise SystemExit(f"league {args.league} started on {league['start_date']}: its settings and ruleset are frozen")
+        league = play.league(conn, args.league)
         try:
             settings = leagues.resolve(league["settings"], leagues.parse_overrides(args.set or []))
         except ValueError as e:
             raise SystemExit(str(e))
-        _check_or_exit(settings)
-        ruleset = scoring.Ruleset.load(args.ruleset) if args.ruleset else \
-            scoring.Ruleset(league["ruleset_version"], league["ruleset"])
-        db.update_league(conn, args.league, settings, ruleset.version, ruleset.raw)
+        play.update_league(conn, league, settings, date.today(),
+                           ruleset=scoring.Ruleset.load(args.ruleset) if args.ruleset else None)
         _print_league(db.leagues(conn, args.league)[0])
 
 
@@ -303,8 +288,9 @@ def cmd_league_drop(args) -> None:
             bioguide, name = play.one_critter(conn, text, [h.bioguide_id for h in held if h.active(args.on)])
             h = play.drop(conn, league, roster, m, bioguide, args.on)
             returned = h.weekly_fee * max(0, h.last_week - h.drop_week + 1)
-            print(f"{args.player} dropped {name} on {args.on}: held through week {h.drop_week - 1}, "
-                  f"${returned:,.2f} reserved returned"
+            held = (f"held through week {h.drop_week - 1}" if h.drop_week > h.first_week
+                    else "before its first week")
+            print(f"{args.player} dropped {name} on {args.on}: {held}, ${returned:,.2f} reserved returned"
                   + (f", ${h.extra_fee:,} drop fee" if h.extra_fee else "")
                   + (f", {h.points_penalty:g} points penalty" if h.points_penalty else ""))
         b = play.budget(conn, league, roster, m, args.on)
@@ -332,6 +318,8 @@ def cmd_league_roster(args) -> None:
               f"available ${b.available:,.2f}")
         for h, (p, q) in s["holdings"]:
             match play.status(h, args.on):
+                case "dropped" if h.drop_week <= h.first_week:
+                    status = f"dropped {h.dropped_on}, before its first week"
                 case "dropped":
                     status = f"dropped {h.dropped_on}, held weeks {h.first_week}-{h.drop_week - 1}"
                 case "left_office":
