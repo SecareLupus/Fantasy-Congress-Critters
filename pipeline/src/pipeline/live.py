@@ -38,6 +38,9 @@ SETTLE_AFTER_DAYS = 3
 PREVIOUS_CONGRESS_DAYS = 30
 # A roster snapshot smaller than this share of the last one is taken as a source glitch.
 MIN_ROSTER_SHARE = 0.8
+# A senator whose term ended this recently can still be on the Senate's committee lists:
+# an appointee serves until the special election's winner takes office (rosters.senate_seats).
+FORMER_SENATOR_DAYS = 90
 
 
 def congress_on(day: date) -> int:
@@ -96,13 +99,19 @@ def official_snapshot(conn, congress: int, day: date) -> tuple[dict, list[str]]:
     else:
         snapshot = {}
         notes.append(f"the House Clerk still lists the {listed}th Congress; House seats left out")
-    unmatched = []
+    unmatched, kept = [], set()
     senators = db.senators_on(conn, day)
+    sitting = {s.bioguide_id for s in senators}
+    former = db.senators_on(conn, day, ended_since=day - timedelta(days=FORMER_SENATOR_DAYS))
     for xml in senate.values():
-        seats, missed = rosters.senate_seats(xml, senators)
+        seats, missed = rosters.senate_seats(xml, senators, former)
         unmatched += missed
         for key, members in seats.items():
             snapshot.setdefault(key, []).extend(members)
+            kept |= {m["name"] for m in members if m["bioguide"] not in sitting}
+    if kept:
+        notes.append(f"seats kept for {', '.join(sorted(kept))}, still on the Senate's lists "
+                     f"after their term in congress-legislators ended")
     if unmatched:
         notes.append(f"{len(unmatched)} Senate seats of members not in congress-legislators yet: "
                      + "; ".join(sorted(unmatched)[:5]))

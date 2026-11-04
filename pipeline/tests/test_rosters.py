@@ -155,3 +155,11 @@ def test_senate_lists_match_senators_by_state_and_surname():
         seat("ssaf13", "B001236"),
     }
     assert unmatched == ["SSAF New Person (OH)"]
+
+
+def test_a_senator_whose_term_just_ended_keeps_the_seats_the_senate_still_lists():
+    # An appointee's term in congress-legislators ends on election day; they serve on.
+    former = SENATORS + [Senator("H001104", "OH", "Person", "R")]
+    snapshot, unmatched = senate_seats(SENATE_XML, SENATORS, former)
+    assert seat("ssaf00", "H001104") in parse_snapshot(snapshot)
+    assert unmatched == []
