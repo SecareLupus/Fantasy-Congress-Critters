@@ -1,0 +1,8 @@
+[Unit]
+Description=Fantasy Congress Critters nightly backup
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/srv/critters/deploy/backup.sh

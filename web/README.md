@@ -32,4 +32,4 @@ cd web && npm install && npm run dev   # http://localhost:5173
 
 ## Production
 
-`npm run build` writes `web/dist`, which `critters serve` serves alongside the API from one port.
+`npm run build` writes `web/dist`, which `critters serve` serves alongside the API from one port. The Docker image builds it; see [deploy/README.md](../deploy/README.md).

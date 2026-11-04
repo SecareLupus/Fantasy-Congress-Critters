@@ -433,7 +433,9 @@ def cmd_account_update(args) -> None:
 
 def cmd_serve(args) -> None:
     import uvicorn
-    uvicorn.run("pipeline.api:app", host=args.host, port=args.port, reload=args.reload)
+    # Behind a proxy, trust its X-Forwarded-For so sign-in throttling sees visitors' addresses.
+    uvicorn.run("pipeline.api:app", host=args.host, port=args.port, reload=args.reload,
+                proxy_headers=bool(args.forwarded_allow_ips), forwarded_allow_ips=args.forwarded_allow_ips)
 
 
 def cmd_load(args) -> None:
@@ -524,6 +526,9 @@ def main() -> None:
     p.add_argument("--host", default="127.0.0.1")
     p.add_argument("--port", type=int, default=8000)
     p.add_argument("--reload", action="store_true", help="restart when the code changes (development)")
+    p.add_argument("--forwarded-allow-ips", metavar="IPS",
+                   help="addresses of a reverse proxy to trust for the visitor's address, e.g. '*' when only "
+                        "the proxy can reach the app")
     p.set_defaults(func=cmd_serve)
 
     p = sub.add_parser("score", help="score a Congress with a ruleset")

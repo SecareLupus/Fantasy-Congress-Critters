@@ -15,7 +15,8 @@
 - [x] Name canonical data sources/APIs (gaps: Senate committee votes, election odds)
 - [x] Define update cadences and failure handling per source (`critters update`, daily; Design-Data §10.4.3A)
 - Decide whether corrections to settled weeks carry forward into the next unsettled week, or wait for a manual correction window (today: reported as drift, not applied)
-- Host the daily update (scheduler, alerting on a non-zero exit) once there is a production server
+- [x] Deployment setup: Docker image, Compose with Caddy for HTTPS, daily update and nightly backup timers with health-check pings, restore script, runbook (`deploy/`)
+- Rent the server and domain, and go through deploy/README.md (provider, domain and backup storage still to choose)
 - [x] Read-only website: leagues, standings, rosters, market and critter pages (`web/`, `critters serve`)
 - [x] Website accounts: invite codes and passwords, sessions, rosters owned by accounts, joining official leagues (`critters invite`, `critters account`)
 - Password reset without an admin (needs an email sender), if the beta outgrows hand resets
