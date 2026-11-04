@@ -472,6 +472,11 @@ def rosters(conn: psycopg.Connection, league_id: int, player: str | None = None)
     return [dict(zip(ROSTER_COLUMNS, row)) for row in rows]
 
 
+def lock_roster(conn: psycopg.Connection, roster_id: int) -> None:
+    """Hold a roster until the transaction ends, so trades on it happen one at a time."""
+    conn.execute("SELECT 1 FROM rosters WHERE roster_id = %s FOR UPDATE", (roster_id,))
+
+
 def last_transaction(conn: psycopg.Connection, roster_id: int):
     return conn.execute("SELECT max(made_on) FROM transactions WHERE roster_id = %s", (roster_id,)).fetchone()[0]
 
@@ -549,6 +554,13 @@ def roster_weekly_points(conn: psycopg.Connection, run_id: int, session: int,
     return {(b, w): (p, q) for b, w, p, q in conn.execute(
         """SELECT bioguide_id, week, power, productivity FROM weekly_points
            WHERE run_id = %s AND session = %s AND bioguide_id = ANY(%s)""", (run_id, session, bioguides))}
+
+
+def names(conn: psycopg.Connection, bioguides: list[str] | None = None) -> dict[str, str]:
+    """bioguide -> official full name, of these critters or all of them."""
+    return dict(conn.execute(
+        "SELECT bioguide_id, official_full_name FROM critters WHERE %(b)s::text[] IS NULL OR bioguide_id = ANY(%(b)s)",
+        {"b": bioguides}).fetchall())
 
 
 def find_critters(conn: psycopg.Connection, text: str, among: list[str] | None = None) -> list[tuple[str, str]]:
@@ -705,3 +717,91 @@ def live_runs(conn: psycopg.Connection) -> list[tuple]:
         if session is not None:
             out[run_id][4].append((session, week))
     return list(out.values())
+
+
+def _rows(cur) -> list[dict]:
+    names = [c.name for c in cur.description]
+    return [dict(zip(names, row)) for row in cur.fetchall()]
+
+
+def critter_cards(conn: psycopg.Connection, bioguides: list[str] | None, day) -> dict[str, dict]:
+    """bioguide -> name, chamber, state, district and party of the term held on `day`, or the
+    last one before it."""
+    return {r["bioguide_id"]: r for r in _rows(conn.execute("""
+        SELECT DISTINCT ON (c.bioguide_id) c.bioguide_id, c.official_full_name AS name,
+               CASE t.term_type WHEN 'sen' THEN 'sen' ELSE 'rep' END AS chamber, t.state, t.district,
+               coalesce((SELECT p.party FROM critter_parties p
+                         WHERE p.bioguide_id = c.bioguide_id AND p.start_date <= %(d)s
+                         ORDER BY p.start_date DESC LIMIT 1), t.party) AS party
+        FROM critters c JOIN critter_terms t USING (bioguide_id)
+        WHERE (%(b)s::text[] IS NULL OR c.bioguide_id = ANY(%(b)s)) AND t.start_date <= %(d)s
+        ORDER BY c.bioguide_id, t.start_date DESC""", {"b": bioguides, "d": day}))}
+
+
+def market_prices(conn: psycopg.Connection, run_id: int, session: int) -> list[dict]:
+    return _rows(conn.execute("""
+        SELECT bioguide_id, chamber, session_cost, signing_fee, weekly_fee, projected_power,
+               projected_productivity, multiplier
+        FROM critter_prices WHERE run_id = %s AND session = %s ORDER BY session_cost DESC""", (run_id, session)))
+
+
+def owners(conn: psycopg.Connection, league_id: int, congress: int, session: int, day) -> dict[str, list[str]]:
+    """bioguide -> players in the league holding the critter on `day` (bought, not dropped)."""
+    out: dict[str, list[str]] = {}
+    for bioguide, player in conn.execute("""
+            SELECT p.bioguide_id, r.player FROM transactions p JOIN rosters r USING (roster_id)
+            WHERE r.league_id = %(l)s AND p.kind = 'purchase' AND p.congress = %(c)s AND p.session = %(s)s
+              AND p.made_on <= %(d)s
+              AND NOT EXISTS (SELECT 1 FROM transactions d WHERE d.purchase_id = p.txn_id AND d.made_on <= %(d)s)
+            ORDER BY r.player""", {"l": league_id, "c": congress, "s": session, "d": day}):
+        out.setdefault(bioguide, []).append(player)
+    return out
+
+
+def critter(conn: psycopg.Connection, bioguide: str) -> dict | None:
+    """A critter's identity, terms, party changes and leadership posts."""
+    row = _rows(conn.execute("""
+        SELECT bioguide_id, official_full_name AS name, first_name, last_name, birthday,
+               govtrack_id, wikidata_id, fec_ids FROM critters WHERE bioguide_id = %s""", (bioguide,)))
+    if not row:
+        return None
+    out = row[0]
+    out["terms"] = _rows(conn.execute("""
+        SELECT CASE term_type WHEN 'sen' THEN 'sen' ELSE 'rep' END AS chamber, start_date, end_date, state,
+               district, senate_class, party
+        FROM critter_terms WHERE bioguide_id = %s ORDER BY start_date DESC""", (bioguide,)))
+    out["leadership"] = _rows(conn.execute("""
+        SELECT chamber, title, start_date, end_date FROM critter_leadership
+        WHERE bioguide_id = %s ORDER BY start_date DESC""", (bioguide,)))
+    return out
+
+
+def critter_points(conn: psycopg.Connection, run_id: int, session: int, bioguide: str, before) -> dict:
+    """What a critter's points in a run's session came from, counting items dated before
+    `before` (the end of the last week that has ended): productivity by category and by
+    bill, the positions behind power, and roll-call participation."""
+    args = {"r": run_id, "s": session, "b": bioguide, "d": before}
+    categories = _rows(conn.execute("""
+        SELECT category, count(*) AS items, sum(points) AS points FROM score_items
+        WHERE run_id = %(r)s AND session = %(s)s AND bioguide_id = %(b)s AND pillar = 'productivity'
+          AND item_date < %(d)s
+        GROUP BY 1 ORDER BY 3 DESC""", args))
+    bills = _rows(conn.execute("""
+        SELECT i.bill_id, b.title, sum(i.points) AS points, array_agg(DISTINCT i.category) AS categories,
+               b.sponsor_id = %(b)s AS sponsor
+        FROM score_items i JOIN bills b USING (bill_id)
+        WHERE i.run_id = %(r)s AND i.session = %(s)s AND i.bioguide_id = %(b)s AND i.item_date < %(d)s
+        GROUP BY 1, 2, b.sponsor_id ORDER BY 3 DESC LIMIT 25""", args))
+    positions = _rows(conn.execute("""
+        SELECT i.category, i.committee_code, coalesce(c.name, i.detail->>'key') AS name, i.detail->>'role' AS role,
+               i.item_date AS start_date, i.item_date + (i.detail->>'days')::int - 1 AS end_date,
+               (i.detail->>'value')::float AS value
+        FROM score_items i LEFT JOIN committees c USING (committee_code)
+        WHERE i.run_id = %(r)s AND i.session = %(s)s AND i.bioguide_id = %(b)s AND i.pillar = 'power'
+        ORDER BY 7 DESC""", args))
+    participation = conn.execute("""
+        SELECT sum((detail->>'participation')::float * (detail->>'days_seated')::int)
+               / nullif(sum((detail->>'days_seated')::int), 0)
+        FROM score_items WHERE run_id = %(r)s AND session = %(s)s AND bioguide_id = %(b)s
+          AND category = 'VOTE_CAST' AND item_date < %(d)s""", args).fetchone()[0]
+    return {"categories": categories, "bills": bills, "positions": positions, "participation": participation}

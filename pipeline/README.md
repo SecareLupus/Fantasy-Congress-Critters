@@ -26,6 +26,7 @@ uv run critters league buy 1 <player> Cornyn Neguse   # bioguide ids or parts of
 uv run critters league standings 1
 uv run critters update                 # once a day during a season: new data, rescore, settle weeks
 uv run critters status                 # when each source last updated, and what failed
+uv run critters serve                  # the web API on http://127.0.0.1:8000 (see web/README.md)
 uv run pytest
 ```
 
@@ -100,6 +101,10 @@ To schedule it, a crontab line such as:
 ```
 30 9 * * * cd /path/to/pipeline && uv run critters update >> ../data/update.log 2>&1
 ```
+
+## Web API
+
+`critters serve` runs the API behind the site (`api.py`, FastAPI): leagues with their standings, rosters, a league's market, critters and where their points came from, and data freshness from `source_syncs`. It is read-only for now. Every view takes `?on=DATE` to show the game as it stood that day, so the 2024 backtest can be browsed. It shares the league logic in `play.py` with the `league` commands, so the site and the command line agree. Weeks still to come are left out of a critter's points: a live run scores them at today's seats and attendance, which aren't points yet. When `web/dist` exists (`npm run build` in `web/`), `serve` also serves the site. See [web/README.md](../web/README.md) for development.
 
 ## Normalization notes
 
