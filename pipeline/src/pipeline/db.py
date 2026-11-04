@@ -373,16 +373,17 @@ def majority_sides(conn: psycopg.Connection, day) -> dict[str, str]:
     return out
 
 
-def senators_on(conn: psycopg.Connection, day) -> list[Senator]:
-    """Senators in office on `day`, with the first letter of the caucus they sit with."""
+def senators_on(conn: psycopg.Connection, day, ended_since=None) -> list[Senator]:
+    """Senators in office on `day`, with the first letter of the caucus they sit with; with
+    `ended_since`, also those whose term ended on or after that date."""
     return [Senator(*row) for row in conn.execute("""
         SELECT DISTINCT ON (t.bioguide_id) t.bioguide_id, t.state, c.last_name,
                left((SELECT coalesce(p.caucus, p.party) FROM critter_parties p
                      WHERE p.bioguide_id = t.bioguide_id AND p.start_date <= %(d)s
                      ORDER BY p.start_date DESC LIMIT 1), 1)
         FROM critter_terms t JOIN critters c USING (bioguide_id)
-        WHERE t.term_type = 'sen' AND t.start_date <= %(d)s AND t.end_date >= %(d)s
-        ORDER BY t.bioguide_id, t.start_date DESC""", {"d": day})]
+        WHERE t.term_type = 'sen' AND t.start_date <= %(d)s AND t.end_date >= coalesce(%(since)s, %(d)s)
+        ORDER BY t.bioguide_id, t.start_date DESC""", {"d": day, "since": ended_since})]
 
 
 def held_seats(conn: psycopg.Connection, run_id: int, session: int, day) -> list[tuple]:

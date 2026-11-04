@@ -174,10 +174,15 @@ def _match(senators: list[Senator], state: str, last: str) -> Senator | None:
     return None
 
 
-def senate_seats(xml: bytes, senators: list[Senator]) -> tuple[dict[str, list[dict]], list[str]]:
+def senate_seats(xml: bytes, senators: list[Senator],
+                 former: list[Senator] = ()) -> tuple[dict[str, list[dict]], list[str]]:
     """One senate.gov committee_memberships_{code}.xml as a roster snapshot, and the
     members it couldn't match. The Senate lists names and states, not bioguide ids, so
-    members are matched to sitting senators by state and last name. Sides follow the
+    members are matched to sitting senators by state and last name, or failing that to
+    `former` senators whose terms ended recently. congress-legislators ends an appointed
+    senator's term on the day of the special election, but they serve until the winner
+    takes office, and the Senate keeps listing them; their seats are kept, and scoring
+    clips them to their terms as congress-legislators records them. Sides follow the
     caucus, as in house_seats.
     """
     root = ElementTree.fromstring(xml)
@@ -193,7 +198,7 @@ def senate_seats(xml: bytes, senators: list[Senator]) -> tuple[dict[str, list[di
         for member in group.findall("members/member"):
             first, last = member.findtext("name/first"), member.findtext("name/last")
             state = member.findtext("state")
-            senator = _match(senators, state, last)
+            senator = _match(senators, state, last) or _match(former, state, last)
             if senator is None:
                 unmatched.append(f"{key} {first} {last} ({state})")
                 continue
