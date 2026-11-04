@@ -3,6 +3,7 @@
 import json
 import shutil
 import time
+import urllib.error
 import urllib.request
 from datetime import date, datetime
 from pathlib import Path
@@ -11,6 +12,8 @@ from .config import BILL_TYPES, RAW_DIR
 
 GOVINFO_BILLSTATUS = "https://www.govinfo.gov/bulkdata/BILLSTATUS/{congress}/{bill_type}/BILLSTATUS-{congress}-{bill_type}.zip"
 HOUSE_ROLL_CALL = "https://clerk.house.gov/evs/{year}/roll{roll:03d}.xml"
+HOUSE_MEMBER_DATA = "https://clerk.house.gov/xml/lists/MemberData.xml"
+SENATE_COMMITTEE = "https://www.senate.gov/general/committee_membership/committee_memberships_{code}.xml"
 VOTEVIEW = "https://voteview.com/static/data/out/{kind}/S{congress}_{kind}.csv"
 VOTEVIEW_KINDS = ["rollcalls", "votes", "members"]
 FEC_SUMMARY = "https://www.fec.gov/files/bulk-downloads/{cycle}/weball{yy}.zip"
@@ -28,16 +31,68 @@ LEGISLATOR_FILES = [
 ]
 
 
+class NotPublished(Exception):
+    """The source has no file at this address yet (a new Congress's first days)."""
+
+
+RETRY_WAITS = (5, 30)  # seconds before the second and third attempts
+
+
+def _open(req: urllib.request.Request, timeout: int):
+    """urlopen, retrying timeouts, dropped connections and 5xx responses."""
+    for wait in (*RETRY_WAITS, None):
+        try:
+            return urllib.request.urlopen(req, timeout=timeout)
+        except urllib.error.HTTPError as e:
+            if e.code < 500 or wait is None:
+                raise
+        except (urllib.error.URLError, TimeoutError, ConnectionError):
+            if wait is None:
+                raise
+        time.sleep(wait)
+
+
 def _fetch(url: str, dest: Path, force: bool) -> bool:
     if dest.exists() and not force:
         return False
     dest.parent.mkdir(parents=True, exist_ok=True)
     tmp = dest.with_suffix(dest.suffix + ".part")
     req = urllib.request.Request(url, headers={"User-Agent": "critters-pipeline"})
-    with urllib.request.urlopen(req, timeout=120) as resp, open(tmp, "wb") as out:
+    with _open(req, 120) as resp, open(tmp, "wb") as out:
         shutil.copyfileobj(resp, out)
     tmp.rename(dest)
     return True
+
+
+def refresh(url: str, dest: Path) -> bool:
+    """Fetch `url` into `dest` if it changed; True if the file on disk is new.
+
+    Sends the ETag and Last-Modified saved from the last fetch (in dest.meta.json), and
+    compares bytes as well, since not every server honors them.
+    """
+    meta_path = dest.with_suffix(dest.suffix + ".meta.json")
+    meta = json.loads(meta_path.read_text()) if meta_path.exists() and dest.exists() else {}
+    headers = {"User-Agent": "critters-pipeline"}
+    if meta.get("etag"):
+        headers["If-None-Match"] = meta["etag"]
+    if meta.get("last_modified"):
+        headers["If-Modified-Since"] = meta["last_modified"]
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    tmp = dest.with_suffix(dest.suffix + ".part")
+    try:
+        with _open(urllib.request.Request(url, headers=headers), 120) as resp, open(tmp, "wb") as out:
+            shutil.copyfileobj(resp, out)
+            meta = {"etag": resp.headers.get("ETag"), "last_modified": resp.headers.get("Last-Modified")}
+    except urllib.error.HTTPError as e:
+        if e.code == 304:
+            return False
+        if e.code == 404:
+            raise NotPublished(url) from e
+        raise
+    changed = not dest.exists() or tmp.read_bytes() != dest.read_bytes()
+    tmp.rename(dest)
+    meta_path.write_text(json.dumps(meta))
+    return changed
 
 
 def billstatus_path(congress: int, bill_type: str) -> Path:
@@ -55,6 +110,19 @@ def download_billstatus(congress: int, force: bool = False) -> list[Path]:
     return paths
 
 
+def refresh_billstatus(congress: int) -> list[str]:
+    """Bill types whose BILLSTATUS zip changed; GovInfo rebuilds them daily. A new Congress
+    has no zip for a bill type until its first bill of that type."""
+    changed = []
+    for t in BILL_TYPES:
+        try:
+            if refresh(GOVINFO_BILLSTATUS.format(congress=congress, bill_type=t), billstatus_path(congress, t)):
+                changed.append(t)
+        except NotPublished:
+            pass
+    return changed
+
+
 def legislators_path(name: str) -> Path:
     return RAW_DIR / "legislators" / name
 
@@ -67,6 +135,11 @@ def download_legislators(force: bool = False) -> list[Path]:
         print(f"{'fetched' if fetched else 'cached '} {dest.relative_to(RAW_DIR)}")
         paths.append(dest)
     return paths
+
+
+def refresh_legislators() -> list[str]:
+    return [name for name in LEGISLATOR_FILES if refresh(LEGISLATORS.format(ref="main", name=name),
+                                                         legislators_path(name))]
 
 
 def session_year(congress: int, session: int) -> int:
@@ -105,18 +178,34 @@ def download_roster_history(congress: int, force: bool = False) -> list[Path]:
     return sorted(paths)
 
 
+def official_rosters_dir(congress: int) -> Path:
+    """Roster snapshots built from the chambers' own committee lists, one per change."""
+    return RAW_DIR / "rosters" / "official" / str(congress)
+
+
+def fetch_official_rosters(senate_codes: list[str]) -> tuple[bytes, dict[str, bytes]]:
+    """The House Clerk's MemberData.xml and senate.gov's membership file for each Senate
+    or joint committee. All or nothing: a missing committee would end its seats."""
+    def get(url: str) -> bytes:
+        with _open(urllib.request.Request(url, headers={"User-Agent": "critters-pipeline"}), 60) as resp:
+            return resp.read()
+    house = get(HOUSE_MEMBER_DATA)
+    senate = {code: get(SENATE_COMMITTEE.format(code=code)) for code in senate_codes}
+    return house, senate
+
+
 def house_votes_dir(congress: int, session: int) -> Path:
     return RAW_DIR / "votes" / "house" / f"{congress}-{session}"
 
 
-def download_house_votes(congress: int, force: bool = False) -> int:
-    """Fetch every House roll call for both sessions; the Clerk numbers them from 1 each year.
+def download_house_votes(congress: int, force: bool = False, sessions: tuple[int, ...] = (1, 2)) -> int:
+    """Fetch every House roll call for the sessions; the Clerk numbers them from 1 each year.
 
     Past the last roll call the Clerk answers 200 with a short error document, not 404,
     so each file is checked and the first invalid one (after a retry) ends the session.
     """
     total = 0
-    for session in (1, 2):
+    for session in sessions:
         year = session_year(congress, session)
         dest_dir = house_votes_dir(congress, session)
         roll, fetched = 1, 0
@@ -140,6 +229,13 @@ def download_house_votes(congress: int, force: bool = False) -> int:
 
 def voteview_path(congress: int, kind: str) -> Path:
     return RAW_DIR / "votes" / "senate" / f"S{congress}_{kind}.csv"
+
+
+def refresh_senate_votes(congress: int) -> bool:
+    """True if any of Voteview's three files for the Congress changed; NotPublished before
+    its first Senate vote."""
+    return any([refresh(VOTEVIEW.format(kind=kind, congress=congress), voteview_path(congress, kind))
+                for kind in VOTEVIEW_KINDS])
 
 
 def download_senate_votes(congress: int, force: bool = False) -> list[Path]:

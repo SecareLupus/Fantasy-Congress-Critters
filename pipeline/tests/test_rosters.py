@@ -2,12 +2,16 @@ from datetime import date
 
 from pipeline.rosters import (
     Seat,
+    Senator,
     backfill_starts,
     build_memberships,
     clip_to_terms,
     committee_code,
+    house_congress,
+    house_seats,
     parse_snapshot,
     role,
+    senate_seats,
 )
 
 START, END = date(2023, 1, 3), date(2025, 1, 3)
@@ -90,3 +94,64 @@ def test_late_listed_committee_seats_start_when_filled():
     assert other.start_date == START
     [piece] = clip_to_terms(next(m for m in memberships if m.seat == early), [(START, date(2025, 1, 3))])
     assert piece.start_date == named
+
+
+MEMBER_DATA = b"""<MemberData><title-info><congress-num>119</congress-num><majority>R</majority></title-info>
+<members>
+<member><member-info><bioguideID>T000467</bioguideID><official-name>Glenn Thompson</official-name>
+  <party>R</party><caucus>R</caucus></member-info>
+  <committee-assignments><committee comcode="AG00" rank="1" leadership="Chair"/>
+  <subcommittee subcomcode="AG15" rank="3"/><committee rank="2"/></committee-assignments></member>
+<member><member-info><bioguideID>C001119</bioguideID><official-name>Angie Craig</official-name>
+  <party>D</party><caucus>D</caucus></member-info>
+  <committee-assignments><committee comcode="AG00" rank="1"/><committee comcode="EC00" rank="2"/></committee-assignments></member>
+<member><member-info><bioguideID>K000401</bioguideID><official-name>Kevin Kiley</official-name>
+  <party>I</party><caucus>R</caucus></member-info>
+  <committee-assignments><committee comcode="AG00" rank="9"/></committee-assignments></member>
+<member><member-info><bioguideID /></member-info><committee-assignments /></member>
+</members></MemberData>"""
+
+
+def test_house_member_data_becomes_a_snapshot():
+    snapshot = house_seats(MEMBER_DATA, {"AG": "HSAG", "EC": "JSEC"})
+    assert house_congress(MEMBER_DATA) == 119
+    seats = parse_snapshot(snapshot)
+    assert seats == {
+        seat("hsag00", "T000467", "chair", "Chair"),
+        seat("hsag15", "T000467"),
+        # The minority's first member is its ranking member.
+        seat("hsag00", "C001119", "ranking_member", "Ranking Member", "minority"),
+        seat("jsec00", "C001119", side="minority"),
+        # An independent sits with the caucus.
+        seat("hsag00", "K000401"),
+    }
+    assert snapshot["JSEC"][0]["chamber"] == "house"
+
+
+SENATE_XML = """<committee_membership><committees><majority_party>R</majority_party>
+<committee_code>SSAF00</committee_code><members>
+<member><name><first>John</first><last>Boozman</last></name><state>AR</state><party>R</party><position>Chairman</position></member>
+<member><name><first>Ben Ray</first><last>Lujan</last></name><state>NM</state><party>D</party><position>Ranking</position></member>
+<member><name><first>Darline</first><last>Graham</last></name><state>SC</state><party>R</party><position>Member</position></member>
+<member><name><first>Angus</first><last>King</last></name><state>ME</state><party>I</party><position>Member</position></member>
+<member><name><first>New</first><last>Person</last></name><state>OH</state><party>R</party><position>Member</position></member>
+</members>
+<subcommittee><committee_code>SSAF13</committee_code><members>
+<member><name><first>John</first><last>Boozman</last></name><state>AR</state><party>R</party><position>Member</position></member>
+</members></subcommittee></committees></committee_membership>""".encode()
+
+SENATORS = [Senator("B001236", "AR", "Boozman", "R"), Senator("L000570", "NM", "Luján", "D"),
+            Senator("G000608", "SC", "Graham Nordone", "R"), Senator("S001184", "SC", "Scott", "R"),
+            Senator("K000383", "ME", "King", "D")]
+
+
+def test_senate_lists_match_senators_by_state_and_surname():
+    snapshot, unmatched = senate_seats(SENATE_XML, SENATORS)
+    assert parse_snapshot(snapshot) == {
+        seat("ssaf00", "B001236", "chair", "Chairman"),
+        seat("ssaf00", "L000570", "ranking_member", "Ranking Member", "minority"),  # accents folded
+        seat("ssaf00", "G000608"),  # the first of two surnames
+        seat("ssaf00", "K000383", side="minority"),  # caucus, not party
+        seat("ssaf13", "B001236"),
+    }
+    assert unmatched == ["SSAF New Person (OH)"]

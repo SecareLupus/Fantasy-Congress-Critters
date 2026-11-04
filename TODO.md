@@ -13,7 +13,9 @@
 - [x] Define authorship multipliers and dilution curve shape/parameters
 - Quantify anti-exploit caps, decay rates, and cooldown durations
 - [x] Name canonical data sources/APIs (gaps: Senate committee votes, election odds)
-- Define update cadences and failure handling per source
+- [x] Define update cadences and failure handling per source (`critters update`, daily; Design-Data §10.4.3A)
+- Decide whether corrections to settled weeks carry forward into the next unsettled week, or wait for a manual correction window (today: reported as drift, not applied)
+- Host the daily update (scheduler, alerting on a non-zero exit) once there is a production server
 - Choose a fallback for the committee participation multiplier where committees don't publish recorded votes (most Senate committees)
 - Choose an election odds source (deferred with candidate drafting)
 - Add concrete normalization mappings for action text parsing, including edge cases,
