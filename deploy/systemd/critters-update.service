@@ -1,0 +1,9 @@
+[Unit]
+Description=Fantasy Congress Critters daily update
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+# Change the path if the repo isn't at /srv/critters.
+ExecStart=/srv/critters/deploy/update.sh

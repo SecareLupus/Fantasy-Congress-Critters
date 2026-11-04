@@ -329,6 +329,13 @@ def _weeks(m: play.Market, weekly: dict, bioguide: str, final: set[int], on: dat
     return out
 
 
+@app.get("/api/health")
+def health(conn=Depends(connection)) -> dict:
+    """For uptime checks: the app answers and reaches the database."""
+    conn.execute("SELECT 1")
+    return {"ok": True}
+
+
 @app.get("/api/status")
 def status(conn=Depends(connection)) -> dict:
     sources = [dict(zip(("source", "congress", "attempted_at", "ok", "note", "succeeded_at", "latest"), row))

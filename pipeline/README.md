@@ -99,7 +99,7 @@ When anything changed, the Congress is rescored with each ruleset in play (`rule
 
 Then weeks settle (Design-Data §10.4). A week settles, in order, once it has been over for three days, every source has synced since then, and every roll call that bill actions cite before the week ended is loaded (none were missing in the 118th or 119th, so a gap means a source is behind). Its points are copied to `settled_points` and are final for every league with that ruleset: standings count settled weeks from there and later weeks from the latest run. Later corrections to a settled week aren't applied; `update` reports them as drift (weeks, critters and points), for a manual correction window if they matter.
 
-To schedule it, a crontab line such as:
+In production it runs from a systemd timer with a health-check ping ([deploy/README.md](../deploy/README.md)). Elsewhere, a crontab line such as:
 
 ```
 30 9 * * * cd /path/to/pipeline && uv run critters update >> ../data/update.log 2>&1
@@ -107,7 +107,7 @@ To schedule it, a crontab line such as:
 
 ## Web API
 
-`critters serve` runs the API behind the site (`api.py`, FastAPI): leagues with their standings, rosters, a league's market, critters and where their points came from, and data freshness from `source_syncs`; accounts, joining a league, and buying and dropping critters (`play.buy` and `play.drop`, the same code as `critters league buy` and `drop`, which lock the roster until the trade commits so two at once can't both spend the balance). Every view takes `?on=DATE` to show the game as it stood that day, so the 2024 backtest can be browsed. It shares the league logic in `play.py` with the `league` commands, so the site and the command line agree. Weeks still to come are left out of a critter's points: a live run scores them at today's seats and attendance, which aren't points yet. When `web/dist` exists (`npm run build` in `web/`), `serve` also serves the site. See [web/README.md](../web/README.md) for development.
+`critters serve` runs the API behind the site (`api.py`, FastAPI): leagues with their standings, rosters, a league's market, critters and where their points came from, and data freshness from `source_syncs`; accounts, joining a league, and buying and dropping critters (`play.buy` and `play.drop`, the same code as `critters league buy` and `drop`, which lock the roster until the trade commits so two at once can't both spend the balance). Every view takes `?on=DATE` to show the game as it stood that day, so the 2024 backtest can be browsed. It shares the league logic in `play.py` with the `league` commands, so the site and the command line agree. Weeks still to come are left out of a critter's points: a live run scores them at today's seats and attendance, which aren't points yet. When `web/dist` exists (`npm run build` in `web/`), `serve` also serves the site. See [web/README.md](../web/README.md) for development and [deploy/README.md](../deploy/README.md) for production. `/api/health` answers when the app can reach the database, for uptime checks; behind a reverse proxy, `serve --forwarded-allow-ips` trusts the proxy's `X-Forwarded-For` so sign-in throttling sees visitors' real addresses.
 
 ### Accounts
 
