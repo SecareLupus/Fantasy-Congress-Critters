@@ -195,6 +195,9 @@ CREATE TABLE IF NOT EXISTS score_runs (
     ruleset         jsonb NOT NULL,
     created_at      timestamptz NOT NULL DEFAULT now()
 );
+-- Runs made by `critters update`. A newer live run of the same Congress and ruleset
+-- replaces an older one, which is deleted unless prices or purchases point at it.
+ALTER TABLE score_runs ADD COLUMN IF NOT EXISTS live boolean NOT NULL DEFAULT false;
 
 CREATE TABLE IF NOT EXISTS score_items (
     run_id         bigint NOT NULL REFERENCES score_runs ON DELETE CASCADE,
@@ -358,3 +361,43 @@ CREATE TABLE IF NOT EXISTS transactions (
     CHECK ((kind = 'purchase') = (purchase_id IS NULL))
 );
 CREATE INDEX IF NOT EXISTS transactions_roster ON transactions (roster_id);
+
+-- Each attempt by `critters update` to bring a source up to date. latest is the newest
+-- data the source held afterward (the last roll call, the last bill update).
+CREATE TABLE IF NOT EXISTS source_syncs (
+    sync_id     bigserial PRIMARY KEY,
+    source      text NOT NULL,
+    congress    int,
+    started_at  timestamptz NOT NULL,
+    finished_at timestamptz NOT NULL,
+    ok          boolean NOT NULL,
+    changed     int NOT NULL DEFAULT 0,  -- files or records that changed
+    latest      timestamptz,
+    note        text   -- the error, or what was skipped
+);
+CREATE INDEX IF NOT EXISTS source_syncs_source ON source_syncs (source, congress, started_at);
+
+-- Settled weeks (Design-Data §10.4): once a week settles, its points are final for every
+-- league scoring with that ruleset, and later corrections to the data don't change them.
+-- ruleset_key is md5 of the ruleset's jsonb text, which Postgres normalizes.
+CREATE TABLE IF NOT EXISTS settled_weeks (
+    ruleset_key text NOT NULL,
+    congress    int NOT NULL,
+    session     int NOT NULL,
+    week        int NOT NULL,
+    run_id      bigint NOT NULL,  -- the run it was settled from (may since be deleted)
+    settled_at  timestamptz NOT NULL DEFAULT now(),
+    PRIMARY KEY (ruleset_key, congress, session, week)
+);
+
+CREATE TABLE IF NOT EXISTS settled_points (
+    ruleset_key  text NOT NULL,
+    congress     int NOT NULL,
+    session      int NOT NULL,
+    week         int NOT NULL,
+    bioguide_id  text NOT NULL,
+    power        double precision NOT NULL,
+    productivity double precision NOT NULL,
+    PRIMARY KEY (ruleset_key, congress, session, week, bioguide_id),
+    FOREIGN KEY (ruleset_key, congress, session, week) REFERENCES settled_weeks ON DELETE CASCADE
+);

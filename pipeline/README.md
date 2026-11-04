@@ -24,6 +24,8 @@ uv run critters league create --name "2026 Session" --type session --congress 11
 uv run critters league join 1 <player>
 uv run critters league buy 1 <player> Cornyn Neguse   # bioguide ids or parts of names
 uv run critters league standings 1
+uv run critters update                 # once a day during a season: new data, rescore, settle weeks
+uv run critters status                 # when each source last updated, and what failed
 uv run pytest
 ```
 
@@ -35,7 +37,7 @@ Raw files land in `data/raw/` (gitignored). `load` is idempotent: each bill and 
 | --- | --- |
 | Bills, actions, co-sponsors, committee activity, amendments | GovInfo `BILLSTATUS` bulk XML |
 | Members, terms, ID crosswalk, committee names | `unitedstates/congress-legislators` |
-| Committee rosters over time | Every commit of `committee-membership-current.yaml` in `congress-legislators` during the Congress |
+| Committee rosters over time | During a live season, the chambers' own lists, recorded by `critters update` whenever a seat changes: the House Clerk's `MemberData.xml` and senate.gov's `committee_memberships_{code}.xml`. Before that, every commit of `committee-membership-current.yaml` in `congress-legislators` during the Congress |
 | House roll-call votes | House Clerk XML, one file per roll call (`clerk.house.gov/evs/{year}/roll{NNN}.xml`) |
 | Senate roll-call votes | Voteview CSVs (`voteview.com/static/data/out/{rollcalls,votes,members}/S{congress}_*.csv`); senate.gov blocks automated downloads |
 | Candidate receipts (pricing) | FEC all-candidates summary (`fec.gov/files/bulk-downloads/{cycle}/weball{yy}.zip`), the last cycle complete when the session opens |
@@ -54,6 +56,8 @@ Raw files land in `data/raw/` (gitignored). `load` is idempotent: each bill and 
 - `critter_prices`: Session Costs priced from a scoring run: projected power and productivity, market multiplier, signing fee and weekly fee per critter.
 - `league_presets`, `leagues`: settings presets authored by GameMakers, and leagues with their resolved settings and a frozen copy of their ruleset.
 - `rosters`, `transactions`: a player's roster in a league, and its purchases (with the price paid and the weeks reserved) and drops.
+- `source_syncs`: every attempt by `critters update` to bring a source up to date, with what changed, the newest data afterward, and the error if it failed.
+- `settled_weeks`, `settled_points`: weeks whose points are final for every league using a ruleset, and those points.
 - `critters`, `critter_terms`, `committees`: reference data.
 
 ## Scoring
@@ -74,6 +78,28 @@ Players trade with `critters league join`, `buy`, `drop`, `roster` and `standing
 - A drop takes effect the next week: the critter scores through the week already paid for, and the rest of the reservation returns. The league's `drop_cost` adds a fee and a points penalty.
 - A critter whose service ends mid-session leaves the roster with no drop cost: later weeks aren't charged and the slot frees.
 - Points count for the weeks held once each week has ended. Standings rank by total points; head-to-head isn't built yet.
+
+## Live updates
+
+`critters update` keeps a season current; run it once a day from a scheduler (`live.py`). It updates the Congress in session, and for the first 30 days of a new Congress the previous one too, so its last week can settle. Each source is updated on its own and logged in `source_syncs`, so one failure doesn't stop the rest; the command exits non-zero if any failed, and `critters status` shows when each last succeeded and why the last attempt failed. Downloads retry timeouts and server errors, and send the last ETag so unchanged files aren't fetched again. Two updates can't run at once.
+
+| Source | What `update` does |
+| --- | --- |
+| `legislators` | Refetches the congress-legislators files and reloads members, terms and committees when they change |
+| `rosters` | Reads both chambers' committee lists and saves a snapshot (`data/raw/rosters/official/{congress}/`) when any seat changed; from the first one, these replace the congress-legislators history. The Senate lists names and states, matched to sitting senators (accents folded; Darline Graham Nordone is listed as Graham). Sides follow the caucus. Until the House Clerk lists the new Congress, House seats are left out. A list less than 80% the size of the last is refused as a glitch |
+| `billstatus` | GovInfo rebuilds the BILLSTATUS zips daily; changed zips are fetched and bills whose update date changed are reloaded |
+| `house_votes` | Fetches House roll calls past the last one on disk |
+| `senate_votes` | Refetches Voteview's files and reloads the Senate roll calls when they change. Voteview's 119th files held the Senate's September 30 votes by 07:00 UTC the next morning |
+
+When anything changed, the Congress is rescored with each ruleset in play (`rulesets/default.toml` and the rulesets of leagues not yet over) as a live run. A new live run replaces the last one of the same Congress and ruleset, which is deleted unless prices or purchases point at it. Leagues price from the latest run that has prices for the session, so live runs don't change prices.
+
+Then weeks settle (Design-Data §10.4). A week settles, in order, once it has been over for three days, every source has synced since then, and every roll call that bill actions cite before the week ended is loaded (none were missing in the 118th or 119th, so a gap means a source is behind). Its points are copied to `settled_points` and are final for every league with that ruleset: standings count settled weeks from there and later weeks from the latest run. Later corrections to a settled week aren't applied; `update` reports them as drift (weeks, critters and points), for a manual correction window if they matter.
+
+To schedule it, a crontab line such as:
+
+```
+30 9 * * * cd /path/to/pipeline && uv run critters update >> ../data/update.log 2>&1
+```
 
 ## Normalization notes
 

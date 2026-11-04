@@ -17,9 +17,11 @@ commits. A snapshot is dated by its commit, which can trail the real change by w
 """
 
 import re
+import unicodedata
 from dataclasses import dataclass, replace
 from datetime import date, timedelta
 from pathlib import Path
+from xml.etree import ElementTree
 
 import yaml
 
@@ -97,6 +99,116 @@ def load_snapshots(directory: Path) -> list[tuple[date, set[Seat]]]:
         with open(path) as f:
             by_day[day] = parse_snapshot(yaml.load(f, Loader=yaml.CSafeLoader))
     return sorted(by_day.items())
+
+
+def fold(name: str) -> str:
+    """Lowercase without accents, for matching names across sources (Luján, Lujan)."""
+    return "".join(c for c in unicodedata.normalize("NFKD", name) if not unicodedata.combining(c)).lower()
+
+
+def _house_title(leadership: str | None, side: str, rank: int) -> str | None:
+    if leadership:
+        return leadership
+    return "Ranking Member" if side == "minority" and rank == 1 else None
+
+
+def house_seats(member_data: bytes, house_ids: dict[str, str]) -> dict[str, list[dict]]:
+    """The House Clerk's MemberData.xml as a roster snapshot (thomas id -> members).
+
+    house_ids maps the Clerk's two-letter committee codes to thomas ids (AG -> HSAG,
+    EC -> JSEC). Sides follow the caucus (an independent who caucuses with the majority
+    sits with it). The Clerk lists ranks but titles only chairs and vice chairs; the
+    minority's first member is the ranking member, as congress-legislators records it.
+    """
+    root = ElementTree.fromstring(member_data)
+    majority = root.findtext("title-info/majority")
+    snapshot: dict[str, list[dict]] = {}
+    for member in root.iter("member"):
+        bioguide = (member.findtext("member-info/bioguideID") or "").strip()
+        if not bioguide:
+            continue  # vacant seat
+        caucus = member.findtext("member-info/caucus") or member.findtext("member-info/party")
+        side = "majority" if caucus == majority else "minority"
+        name = member.findtext("member-info/official-name")
+        for el in member.findall("committee-assignments/*"):
+            code = el.get("comcode") or el.get("subcomcode")
+            thomas_id = house_ids.get((code or "")[:2])
+            if thomas_id is None:
+                continue  # an empty assignment, or a committee congress-legislators doesn't list
+            key = thomas_id + ("" if code.endswith("00") else code[2:])
+            rank = int(el.get("rank") or 0)
+            entry = {"name": name, "party": side, "rank": rank, "bioguide": bioguide}
+            title = _house_title(el.get("leadership"), side, rank)
+            if title:
+                entry["title"] = title
+            if thomas_id.startswith("J"):
+                entry["chamber"] = "house"
+            snapshot.setdefault(key, []).append(entry)
+    return snapshot
+
+
+def house_congress(member_data: bytes) -> int:
+    """The Congress MemberData.xml describes."""
+    return int(ElementTree.fromstring(member_data).findtext("title-info/congress-num"))
+
+
+SENATE_TITLES = {"Ranking": "Ranking Member", "Member": None}
+
+
+@dataclass(frozen=True)
+class Senator:
+    bioguide_id: str
+    state: str
+    last_name: str
+    caucus: str | None  # party letter: R, D
+
+
+def _match(senators: list[Senator], state: str, last: str) -> Senator | None:
+    """The sitting senator from `state` named `last`; the Senate's roster may give only the
+    first of two surnames (Graham for Graham Nordone)."""
+    here = [s for s in senators if s.state == state]
+    for found in ([s for s in here if fold(s.last_name) == fold(last)],
+                  [s for s in here if fold(last) in fold(s.last_name).replace("-", " ").split()]):
+        if len(found) == 1:
+            return found[0]
+    return None
+
+
+def senate_seats(xml: bytes, senators: list[Senator]) -> tuple[dict[str, list[dict]], list[str]]:
+    """One senate.gov committee_memberships_{code}.xml as a roster snapshot, and the
+    members it couldn't match. The Senate lists names and states, not bioguide ids, so
+    members are matched to sitting senators by state and last name. Sides follow the
+    caucus, as in house_seats.
+    """
+    root = ElementTree.fromstring(xml)
+    committees = root.find("committees")
+    majority = committees.findtext("majority_party")
+    snapshot: dict[str, list[dict]] = {}
+    unmatched = []
+    groups = [committees] + committees.findall("subcommittee")
+    for group in groups:
+        code = group.findtext("committee_code")
+        key = code[:4] if code.endswith("00") else code
+        ranks: dict[str, int] = {}
+        for member in group.findall("members/member"):
+            first, last = member.findtext("name/first"), member.findtext("name/last")
+            state = member.findtext("state")
+            senator = _match(senators, state, last)
+            if senator is None:
+                unmatched.append(f"{key} {first} {last} ({state})")
+                continue
+            side = "majority" if (senator.caucus or member.findtext("party")) == majority else "minority"
+            ranks[side] = ranks.get(side, 0) + 1
+            entry = {"name": f"{first} {last}", "party": side, "rank": ranks[side],
+                     "bioguide": senator.bioguide_id}
+            position = (member.findtext("position") or "").strip()
+            title = SENATE_TITLES.get(position, position or None)
+            if title:
+                entry["title"] = title
+            if key.startswith("J"):
+                entry["chamber"] = "senate"
+            snapshot.setdefault(key, []).append(entry)
+    return snapshot, unmatched
 
 
 def build_memberships(snapshots: list[tuple[date, set[Seat]]], congress_start: date,

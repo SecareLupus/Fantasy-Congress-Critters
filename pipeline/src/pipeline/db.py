@@ -8,7 +8,7 @@ from .billstatus import Action, Bill
 from .config import DATABASE_URL
 from .ledger import Holding
 from .normalize import Event
-from .rosters import Membership
+from .rosters import Membership, Senator
 from .votes import RollCall
 
 
@@ -202,10 +202,12 @@ def scoring_inputs(conn: psycopg.Connection, congress: int):
     return list(bills.values()), votes, positions, leadership
 
 
-def save_score_run(conn: psycopg.Connection, congress: int, ruleset, items, weekly: dict) -> int:
+def save_score_run(conn: psycopg.Connection, congress: int, ruleset, items, weekly: dict,
+                   live: bool = False) -> int:
     run_id = conn.execute(
-        "INSERT INTO score_runs (congress, ruleset_version, ruleset) VALUES (%s, %s, %s) RETURNING run_id",
-        (congress, ruleset.version, Jsonb(ruleset.raw)),
+        """INSERT INTO score_runs (congress, ruleset_version, ruleset, live) VALUES (%s, %s, %s, %s)
+           RETURNING run_id""",
+        (congress, ruleset.version, Jsonb(ruleset.raw), live),
     ).fetchone()[0]
     with conn.cursor().copy(
         """COPY score_items (run_id, bioguide_id, session, pillar, category, item_date, points,
@@ -369,6 +371,18 @@ def majority_sides(conn: psycopg.Connection, day) -> dict[str, str]:
     for chamber, side, _ in rows:
         out.setdefault(chamber, side)
     return out
+
+
+def senators_on(conn: psycopg.Connection, day) -> list[Senator]:
+    """Senators in office on `day`, with the first letter of the caucus they sit with."""
+    return [Senator(*row) for row in conn.execute("""
+        SELECT DISTINCT ON (t.bioguide_id) t.bioguide_id, t.state, c.last_name,
+               left((SELECT coalesce(p.caucus, p.party) FROM critter_parties p
+                     WHERE p.bioguide_id = t.bioguide_id AND p.start_date <= %(d)s
+                     ORDER BY p.start_date DESC LIMIT 1), 1)
+        FROM critter_terms t JOIN critters c USING (bioguide_id)
+        WHERE t.term_type = 'sen' AND t.start_date <= %(d)s AND t.end_date >= %(d)s
+        ORDER BY t.bioguide_id, t.start_date DESC""", {"d": day})]
 
 
 def held_seats(conn: psycopg.Connection, run_id: int, session: int, day) -> list[tuple]:
@@ -546,3 +560,148 @@ def find_critters(conn: psycopg.Connection, text: str, among: list[str] | None =
         ORDER BY bioguide_id = upper(%(t)s) DESC, official_full_name""", {"t": text, "among": among}).fetchall()
     exact = [r for r in rows if r[0] == text.upper()]
     return exact or rows
+
+
+def price_run(conn: psycopg.Connection, ruleset: dict, congress: int, session: int) -> int | None:
+    """The latest run scoring `congress` with this ruleset that has prices for `session`.
+    Live runs replace each other daily; prices stay with the run they were made from."""
+    return conn.execute("""
+        SELECT max(r.run_id) FROM score_runs r
+        WHERE r.congress = %s AND r.ruleset = %s
+          AND EXISTS (SELECT 1 FROM critter_prices p WHERE p.run_id = r.run_id AND p.session = %s)""",
+                        (congress, Jsonb(ruleset), session)).fetchone()[0]
+
+
+def record_sync(conn: psycopg.Connection, source: str, congress: int | None, started_at, ok: bool,
+                changed: int = 0, latest=None, note: str | None = None) -> None:
+    conn.execute("""INSERT INTO source_syncs (source, congress, started_at, finished_at, ok, changed, latest, note)
+                    VALUES (%s, %s, %s, now(), %s, %s, %s, %s)""",
+                 (source, congress, started_at, ok, changed, latest, note))
+    conn.commit()
+
+
+def last_synced(conn: psycopg.Connection, congress: int) -> dict[str, object]:
+    """source -> when it last synced successfully for `congress` (or for every Congress)."""
+    return dict(conn.execute("""
+        SELECT source, max(finished_at) FROM source_syncs
+        WHERE ok AND (congress = %s OR congress IS NULL) GROUP BY source""", (congress,)).fetchall())
+
+
+def sync_status(conn: psycopg.Connection) -> list[tuple]:
+    """Per source and Congress: the last attempt (when, ok, note), the last success and the
+    newest data it held."""
+    return conn.execute("""
+        SELECT DISTINCT ON (source, congress) source, congress, finished_at, ok, note,
+               (SELECT max(finished_at) FROM source_syncs o
+                WHERE o.ok AND o.source = s.source AND o.congress IS NOT DISTINCT FROM s.congress),
+               (SELECT max(latest) FROM source_syncs o
+                WHERE o.ok AND o.source = s.source AND o.congress IS NOT DISTINCT FROM s.congress)
+        FROM source_syncs s ORDER BY source, congress, finished_at DESC""").fetchall()
+
+
+def bill_update_dates(conn: psycopg.Connection, congress: int) -> dict:
+    return dict(conn.execute("SELECT bill_id, update_date FROM bills WHERE congress = %s", (congress,)).fetchall())
+
+
+def roll_numbers(conn: psycopg.Connection, chamber: str, congress: int, session: int) -> set[int]:
+    return {r[0] for r in conn.execute(
+        "SELECT roll_number FROM roll_calls WHERE chamber = %s AND congress = %s AND session = %s",
+        (chamber, congress, session))}
+
+
+def latest_vote(conn: psycopg.Connection, chamber: str, congress: int):
+    return conn.execute("SELECT max(vote_date) FROM roll_calls WHERE chamber = %s AND congress = %s",
+                        (chamber, congress)).fetchone()[0]
+
+
+def missing_roll_calls(conn: psycopg.Connection, congress: int, session: int, before) -> list[str]:
+    """Roll calls that bill actions before `before` cite but that aren't loaded: votes a
+    source hasn't published yet."""
+    return [r[0] for r in conn.execute("""
+        SELECT DISTINCT (v->>'chamber') || ' ' || (v->>'roll_number')
+        FROM bill_actions a JOIN bills b USING (bill_id), jsonb_array_elements(a.recorded_votes) v
+        WHERE b.congress = %(c)s AND (v->>'congress')::int = %(c)s AND (v->>'session')::int = %(s)s
+          AND a.action_date < %(d)s
+          AND NOT EXISTS (SELECT 1 FROM roll_calls rc
+                          WHERE rc.chamber = v->>'chamber' AND rc.congress = %(c)s AND rc.session = %(s)s
+                            AND rc.roll_number = (v->>'roll_number')::int)
+        ORDER BY 1""", {"c": congress, "s": session, "d": before})]
+
+
+def prune_live_runs(conn: psycopg.Connection, ruleset: dict, congress: int, keep: int) -> list[int]:
+    """Delete live runs of `congress` with this ruleset older than `keep`, unless prices or
+    purchases point at them."""
+    gone = [r[0] for r in conn.execute("""
+        DELETE FROM score_runs r
+        WHERE r.live AND r.congress = %s AND r.ruleset = %s AND r.run_id < %s
+          AND NOT EXISTS (SELECT 1 FROM critter_prices p WHERE p.run_id = r.run_id)
+          AND NOT EXISTS (SELECT 1 FROM transactions t WHERE t.price_run = r.run_id)
+        RETURNING r.run_id""", (congress, Jsonb(ruleset), keep))]
+    conn.commit()
+    return gone
+
+
+def settled_weeks(conn: psycopg.Connection, ruleset: dict, congress: int, session: int) -> set[int]:
+    return {r[0] for r in conn.execute("""
+        SELECT week FROM settled_weeks
+        WHERE ruleset_key = md5(%s::jsonb::text) AND congress = %s AND session = %s""",
+                                       (Jsonb(ruleset), congress, session))}
+
+
+def settle_week(conn: psycopg.Connection, ruleset: dict, congress: int, session: int, week: int,
+                run_id: int) -> int:
+    """Freeze a week's points from `run_id`; returns how many critters scored in it."""
+    key = conn.execute("SELECT md5(%s::jsonb::text)", (Jsonb(ruleset),)).fetchone()[0]
+    conn.execute("""INSERT INTO settled_weeks (ruleset_key, congress, session, week, run_id)
+                    VALUES (%s, %s, %s, %s, %s)""", (key, congress, session, week, run_id))
+    n = conn.execute("""
+        INSERT INTO settled_points (ruleset_key, congress, session, week, bioguide_id, power, productivity)
+        SELECT %s, %s, session, week, bioguide_id, power, productivity FROM weekly_points
+        WHERE run_id = %s AND session = %s AND week = %s""",
+                     (key, congress, run_id, session, week)).rowcount
+    conn.commit()
+    return n
+
+
+def settled_points(conn: psycopg.Connection, ruleset: dict, congress: int, session: int,
+                   bioguides: list[str]) -> dict[tuple[str, int], tuple[float, float]]:
+    return {(b, w): (p, q) for b, w, p, q in conn.execute("""
+        SELECT bioguide_id, week, power, productivity FROM settled_points
+        WHERE ruleset_key = md5(%s::jsonb::text) AND congress = %s AND session = %s
+          AND bioguide_id = ANY(%s)""", (Jsonb(ruleset), congress, session, bioguides))}
+
+
+def drift(conn: psycopg.Connection, run_id: int) -> list[tuple]:
+    """Settled weeks whose points the run would now score differently, which settlement keeps
+    out (Design-Data §10.4): (session, week, critters changed, net points, absolute points)."""
+    return conn.execute("""
+        WITH run AS (SELECT congress, md5(ruleset::text) AS key FROM score_runs WHERE run_id = %(r)s),
+        settled AS (
+            SELECT p.session, p.week, p.bioguide_id, p.power + p.productivity AS points
+            FROM settled_points p JOIN run ON p.ruleset_key = run.key AND p.congress = run.congress),
+        now AS (
+            SELECT w.session, w.week, w.bioguide_id, w.power + w.productivity AS points
+            FROM weekly_points w
+            WHERE w.run_id = %(r)s AND (w.session, w.week) IN (
+                SELECT s.session, s.week FROM settled_weeks s JOIN run
+                ON s.ruleset_key = run.key AND s.congress = run.congress))
+        SELECT session, week, count(*), sum(coalesce(n.points, 0) - coalesce(s.points, 0)),
+               sum(abs(coalesce(n.points, 0) - coalesce(s.points, 0)))
+        FROM settled s FULL JOIN now n USING (session, week, bioguide_id)
+        WHERE abs(coalesce(n.points, 0) - coalesce(s.points, 0)) > 1e-6
+        GROUP BY session, week ORDER BY session, week""", {"r": run_id}).fetchall()
+
+
+def live_runs(conn: psycopg.Connection) -> list[tuple]:
+    """Each live run, with how far each of its sessions has settled: (run, congress,
+    ruleset version, created, [(session, last settled week)])."""
+    rows = conn.execute("""
+        SELECT r.run_id, r.congress, r.ruleset_version, r.created_at, s.session, max(s.week)
+        FROM score_runs r LEFT JOIN settled_weeks s ON s.ruleset_key = md5(r.ruleset::text) AND s.congress = r.congress
+        WHERE r.live GROUP BY 1, 2, 3, 4, 5 ORDER BY 1, 5""").fetchall()
+    out: dict[int, tuple] = {}
+    for run_id, congress, version, created, session, week in rows:
+        out.setdefault(run_id, (run_id, congress, version, created, []))
+        if session is not None:
+            out[run_id][4].append((session, week))
+    return list(out.values())
